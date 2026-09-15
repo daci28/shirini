@@ -292,10 +292,31 @@ export function sortInvoicesByRecent(invoices: Invoice[]) {
   });
 }
 
+/**
+ * A custom pastry request only becomes a financial document once the workshop
+ * has actually priced it (a quote, a final price, or a prepayment the customer
+ * must pay). Before that it is just an enquiry awaiting review, so emitting an
+ * invoice for it produced a confusing 0-تومان entry in the finance screen the
+ * moment the customer submitted their request.
+ */
+export function isInvoiceableCustomOrder(order: CustomPastryOrder): boolean {
+  if (!order) return false;
+  const priced = amount(order.finalPrice) > 0
+    || amount(order.estimatedPrice) > 0
+    || amount(order.prepaymentAmount) > 0;
+  // Keep any order that already carries real payment activity or has moved
+  // past quoting, so an existing invoice never disappears from the archive.
+  const hasPaymentActivity = Boolean(order.paymentReceiptImage)
+    || Boolean(order.isPrepaymentPaid)
+    || (Boolean(order.prepaymentStatus) && order.prepaymentStatus !== 'not_required');
+  const pastQuoting = !['pending_review', 'rejected'].includes(order.status);
+  return priced || hasPaymentActivity || pastQuoting;
+}
+
 export function buildAllInvoices(orders: Order[], customOrders: CustomPastryOrder[], manualInvoices: Invoice[]) {
   return sortInvoicesByRecent([
     ...orders.map(buildOrderInvoice),
-    ...customOrders.map(buildCustomOrderInvoice),
+    ...customOrders.filter(isInvoiceableCustomOrder).map(buildCustomOrderInvoice),
     ...manualInvoices.filter((invoice) => invoice?.source === 'manual'),
   ]);
 }

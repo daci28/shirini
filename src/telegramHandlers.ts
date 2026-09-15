@@ -598,6 +598,34 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
 
 // ============ ADMIN CALLBACKS ============
 
+/**
+ * Telegram rejects an inline keyboard whose `callback_data` exceeds 64 bytes,
+ * and it rejects the WHOLE message — so a single oversized button made the
+ * invoice detail screen silently fail to appear at all.
+ *
+ * Invoice and payment ids are long (`invoice-manual-<ts>-<rand>` plus
+ * `payment-invoice-telegram-<ts>-<rand>` is ~98 bytes), so instead of embedding
+ * them we hand out a short stable token and resolve it back on the callback.
+ */
+const callbackRefToValue = new Map<string, string>();
+const callbackValueToRef = new Map<string, string>();
+let callbackRefCounter = 0;
+
+function shortRef(value: string): string {
+  const existing = callbackValueToRef.get(value);
+  if (existing) return existing;
+  callbackRefCounter += 1;
+  const ref = `r${callbackRefCounter.toString(36)}`;
+  callbackValueToRef.set(value, ref);
+  callbackRefToValue.set(ref, value);
+  return ref;
+}
+
+/** Resolve a short token back to its id; unknown/plain values pass through. */
+function resolveRef(ref: string): string {
+  return callbackRefToValue.get(ref) || ref;
+}
+
 /** Manual invoices carrying a customer receipt that still awaits an admin decision. */
 function listPendingManualInvoicePayments(ctx: TelegramContext): { invoice: any; payment: any }[] {
   const pending: { invoice: any; payment: any }[] = [];
@@ -742,7 +770,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
       const pay = item.payment;
       const cap = `🧾 <b>فیش فاکتور اختصاصی:</b> <code>${escapeHtml(inv.invoiceNumber)}</code>\n👤 مشتری: <b>${escapeHtml(inv.customerName)}</b>\n📞 <code>${escapeHtml(inv.customerPhone)}</code>\n💰 مبلغ پرداختی: <b>${pay.amount.toLocaleString()} تومان</b>\n💳 کل فاکتور: <b>${inv.totalAmount.toLocaleString()} تومان</b>`;
       await tgSend(ctx, cap, [
-        [{ text: '✅ تأیید فیش فاکتور', callback_data: `admin_inva_approve_${inv.id}_${pay.id}` }, { text: '❌ رد فیش فاکتور', callback_data: `admin_inva_reject_${inv.id}_${pay.id}` }],
+        [{ text: '✅ تأیید فیش فاکتور', callback_data: `admin_inva_approve_${shortRef(inv.id)}_${shortRef(pay.id)}` }, { text: '❌ رد فیش فاکتور', callback_data: `admin_inva_reject_${shortRef(inv.id)}_${shortRef(pay.id)}` }],
         [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]
       ], pay.receiptImage);
     }
@@ -786,7 +814,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
         const marker = pending ? '⏳' : inv.status === 'paid' ? '✅' : inv.status === 'cancelled' ? '🚫' : '📄';
         return [{
           text: `${marker} ${inv.invoiceNumber} — ${(inv.totalAmount || 0).toLocaleString('fa-IR')}`,
-          callback_data: `admin_inv_view_${inv.id}`,
+          callback_data: `admin_inv_view_${shortRef(inv.id)}`,
         }];
       }),
       [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
@@ -809,7 +837,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     await tgSend(ctx, `📁 <b>فیش‌های بررسی‌شده (${reviewed.length} مورد)</b>\n────────────────────\nبرای دیدن تصویر فیش و جزئیات، روی هر مورد بزنید:`, [
       ...reviewed.slice(0, 20).map(({ invoice, payment }) => [{
         text: `${payment.status === 'confirmed' ? '✅' : '❌'} ${invoice.invoiceNumber} — ${(payment.amount || 0).toLocaleString('fa-IR')}`,
-        callback_data: `admin_inv_view_${invoice.id}`,
+        callback_data: `admin_inv_view_${shortRef(invoice.id)}`,
       }]),
       [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
       [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
@@ -821,7 +849,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   // receipt keeps its approve/reject actions here too, so the admin can decide
   // straight from the invoice view rather than only from the pending queue.
   if (data.startsWith('admin_inv_view_')) {
-    const invoiceId = data.replace('admin_inv_view_', '');
+    const invoiceId = resolveRef(data.replace('admin_inv_view_', ''));
     const inv = Array.isArray(ctx.invoices) ? ctx.invoices.find((i: any) => i.id === invoiceId) : undefined;
     if (!inv) {
       await tgSend(ctx, 'ℹ️ فاکتور یافت نشد.', [[{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }]]);
@@ -864,8 +892,8 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     const buttons: any[][] = [];
     if (pendingPayment) {
       buttons.push([
-        { text: '✅ تأیید فیش', callback_data: `admin_inva_approve_${inv.id}_${pendingPayment.id}` },
-        { text: '❌ رد فیش', callback_data: `admin_inva_reject_${inv.id}_${pendingPayment.id}` },
+        { text: '✅ تأیید فیش', callback_data: `admin_inva_approve_${shortRef(inv.id)}_${shortRef(pendingPayment.id)}` },
+        { text: '❌ رد فیش', callback_data: `admin_inva_reject_${shortRef(inv.id)}_${shortRef(pendingPayment.id)}` },
       ]);
     }
     buttons.push([{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }]);
@@ -878,8 +906,8 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   // Manual Invoice Payment Approval
   if (data.startsWith('admin_inva_approve_')) {
     const parts = data.replace('admin_inva_approve_', '').split('_');
-    const invoiceId = parts[0];
-    const paymentId = parts[1];
+    const invoiceId = resolveRef(parts[0]);
+    const paymentId = resolveRef(parts[1]);
     if (Array.isArray(ctx.invoices)) {
       const inv = ctx.invoices.find((i: any) => i.id === invoiceId);
       if (inv && Array.isArray(inv.payments)) {
@@ -932,8 +960,8 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   // Manual Invoice Payment Rejection
   if (data.startsWith('admin_inva_reject_')) {
     const parts = data.replace('admin_inva_reject_', '').split('_');
-    const invoiceId = parts[0];
-    const paymentId = parts[1];
+    const invoiceId = resolveRef(parts[0]);
+    const paymentId = resolveRef(parts[1]);
     if (Array.isArray(ctx.invoices)) {
       const inv = ctx.invoices.find((i: any) => i.id === invoiceId);
       if (inv && Array.isArray(inv.payments)) {

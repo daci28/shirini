@@ -773,7 +773,9 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
           pay.updatedAt = new Date().toISOString();
           inv.paidAmount = inv.payments.filter((p: any) => p.status === 'confirmed').reduce((s: number, p: any) => s + p.amount, 0);
           inv.remainingAmount = Math.max(0, inv.totalAmount - inv.paidAmount);
-          inv.status = inv.paidAmount > 0 ? 'partially_paid' : 'unpaid';
+          // 'unpaid' is not a valid InvoiceStatus; it made the panel and the
+          // bot disagree about a rejected invoice until the next manual edit.
+          inv.status = inv.paidAmount > 0 ? 'partially_paid' : 'pending_payment';
           inv.updatedAt = new Date().toISOString();
 
           const targetChatId = inv.customerTelegramId || ctx.customers.find((c: any) => c.id === inv.customerId)?.telegramId;

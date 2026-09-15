@@ -2225,6 +2225,56 @@ async function startServer() {
     }
   };
 
+  /**
+   * Record a customer-submitted receipt against a manual invoice and report it
+   * to the finance topic.
+   *
+   * This is shared by the guided payment flow (the customer tapped «پرداخت
+   * فاکتور») and by the stateless photo fallback. Previously only the guided
+   * flow recorded the payment, so whenever the bot state was lost — a Railway
+   * restart/redeploy, an expired state file, or the customer simply sending the
+   * receipt photo without tapping the button first — the receipt was answered
+   * with a generic "image received" message, no payment row was stored and the
+   * finance topic never learned that the customer had paid.
+   */
+  const recordManualInvoiceReceipt = (invoice: Invoice, photoFileId: string): InvoicePayment => {
+    const now = new Date().toISOString();
+    const payment: InvoicePayment = {
+      id: `payment-invoice-telegram-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      amount: Math.round(invoice.remainingAmount || invoice.totalAmount),
+      method: 'card_to_card',
+      status: 'submitted',
+      receiptImage: photoFileId,
+      notes: 'فیش واریزی ارسال‌شده توسط مشتری در تلگرام',
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (!Array.isArray(invoice.payments)) invoice.payments = [];
+    invoice.payments.push(payment);
+    const calculated = calculateInvoiceAmounts(invoice);
+    Object.assign(invoice, calculated, {
+      paymentMethod: 'card_to_card',
+      status: resolveManualInvoiceStatus(invoice.status, { ...calculated, payments: invoice.payments }),
+      updatedAt: now,
+    });
+    saveAllData();
+    sendToTelegramTopic(
+      'finance',
+      `💳 <b>فیش فاکتور اختصاصی دریافت شد:</b>\n\n🔖 شماره فاکتور: <code>${escapeTelegramHtml(invoice.invoiceNumber)}</code>\n👤 خریدار: <b>${escapeTelegramHtml(invoice.customerName)}</b>\n📞 <code>${escapeTelegramHtml(invoice.customerPhone || '---')}</code>\n💰 مبلغ پرداختی: <b>${payment.amount.toLocaleString('fa-IR')} تومان</b>\n💳 کل فاکتور: <b>${invoice.totalAmount.toLocaleString('fa-IR')} تومان</b>\n⏳ وضعیت: <b>در انتظار بررسی و تأیید ادمین</b>`,
+      photoFileId,
+    );
+    return payment;
+  };
+
+  /** The payable manual invoice a stray receipt photo most plausibly belongs to. */
+  const findPayableInvoiceForChat = (chatId: string): Invoice | undefined => invoices
+    .filter((invoice) => {
+      if (!isManualInvoicePayable(invoice)) return false;
+      if (String(invoice.customerTelegramId || '') === chatId) return true;
+      return String(getBotLinkedCustomerForInvoice(invoice)?.telegramId || '') === chatId;
+    })
+    .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''))[0];
+
   app.get('/api/invoices', (req: Request, res: Response) => {
     res.json(buildAllInvoices(orders, customOrders, invoices));
   });
@@ -2437,6 +2487,21 @@ async function startServer() {
       updatedAt: now,
     });
     saveAllData();
+    // A payment registered by an administrator is a finance event too; without
+    // this the group only ever saw invoice creation for manually settled bills.
+    const registeredPaymentStatusLabel = paymentStatus === 'confirmed'
+      ? 'تأییدشده'
+      : paymentStatus === 'submitted'
+        ? 'در انتظار بررسی'
+        : paymentStatus === 'rejected'
+          ? 'ردشده'
+          : paymentStatus === 'refunded'
+            ? 'بازپرداخت‌شده'
+            : 'در انتظار پرداخت';
+    sendToTelegramTopic(
+      'finance',
+      `💰 <b>پرداخت جدید برای فاکتور ثبت شد:</b>\n\n🔖 شماره: <code>${escapeTelegramHtml(invoice.invoiceNumber)}</code>\n👤 مشتری: ${escapeTelegramHtml(invoice.customerName)}\n💳 مبلغ: <b>${paymentAmount.toLocaleString('fa-IR')} تومان</b>\n📌 وضعیت پرداخت: <b>${registeredPaymentStatusLabel}</b>\n🧾 وضعیت فاکتور: <b>${customerInvoiceStatusLabel(invoice.status)}</b>\n⏳ مانده: <b>${invoice.remainingAmount.toLocaleString('fa-IR')} تومان</b>`,
+    );
     res.json(invoice);
   });
 
@@ -2501,9 +2566,16 @@ async function startServer() {
       res.status(400).json({ error: 'وضعیت فاکتور معتبر نیست.' });
       return;
     }
+    const previousStatus = invoice.status;
     invoice.status = resolveManualInvoiceStatus(status, invoice);
     invoice.updatedAt = new Date().toISOString();
     saveAllData();
+    if (invoice.status !== previousStatus) {
+      sendToTelegramTopic(
+        'finance',
+        `🔄 <b>وضعیت فاکتور تغییر کرد:</b>\n\n🔖 شماره: <code>${escapeTelegramHtml(invoice.invoiceNumber)}</code>\n👤 مشتری: ${escapeTelegramHtml(invoice.customerName)}\n📌 از <b>${customerInvoiceStatusLabel(previousStatus)}</b> به <b>${customerInvoiceStatusLabel(invoice.status)}</b>`,
+      );
+    }
     res.json(invoice);
   });
 
@@ -4373,32 +4445,8 @@ async function startServer() {
           }
 
           const photoFileId = incomingImageFileId;
-          const now = new Date().toISOString();
-          const payment: InvoicePayment = {
-            id: `payment-invoice-telegram-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            amount: Math.round(invoice.remainingAmount || invoice.totalAmount),
-            method: 'card_to_card',
-            status: 'submitted',
-            receiptImage: photoFileId,
-            notes: 'فیش واریزی ارسال‌شده توسط مشتری در تلگرام',
-            createdAt: now,
-            updatedAt: now,
-          };
-          if (!Array.isArray(invoice.payments)) invoice.payments = [];
-          invoice.payments.push(payment);
-          const calculated = calculateInvoiceAmounts(invoice);
-          Object.assign(invoice, calculated, {
-            paymentMethod: 'card_to_card',
-            status: resolveManualInvoiceStatus(invoice.status, { ...calculated, payments: invoice.payments }),
-            updatedAt: now,
-          });
-          saveAllData();
+          recordManualInvoiceReceipt(invoice, photoFileId);
           userStates.delete(chatId);
-          sendToTelegramTopic(
-            'finance',
-            `💳 <b>فیش فاکتور اختصاصی دریافت شد:</b>\n\n🔖 شماره فاکتور: <code>${escapeTelegramHtml(invoice.invoiceNumber)}</code>\n👤 خریدار: <b>${escapeTelegramHtml(invoice.customerName)}</b>\n📞 <code>${escapeTelegramHtml(invoice.customerPhone || '---')}</code>\n💰 مبلغ پرداختی: <b>${payment.amount.toLocaleString('fa-IR')} تومان</b>\n💳 کل فاکتور: <b>${invoice.totalAmount.toLocaleString('fa-IR')} تومان</b>\n⏳ وضعیت: <b>در انتظار بررسی و تأیید ادمین</b>`,
-            photoFileId,
-          );
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -4600,6 +4648,26 @@ async function startServer() {
 
         // Fallback: If customer sent an image directly without clicking a button first,
         // auto-detect their pending orders or invoices.
+
+        // An unpaid manual invoice is the most specific thing a stray receipt
+        // can belong to, so it is matched before generic order receipts.
+        const pendingInvoice = findPayableInvoiceForChat(chatId);
+        if (pendingInvoice) {
+          recordManualInvoiceReceipt(pendingInvoice, incomingImageFileId);
+          userStates.delete(chatId);
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `✅ <b>فیش واریزی شما برای فاکتور ${escapeTelegramHtml(pendingInvoice.invoiceNumber)} با موفقیت دریافت شد!</b>\n\nپس از بررسی و تأیید توسط مدیریت قنادی، وضعیت فاکتور به‌روزرسانی خواهد شد.`,
+              parse_mode: 'HTML',
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+            }),
+          });
+          return;
+        }
+
         const pendingOrder = orders.find(o =>
           String(o.customerTelegramId) === chatId
           && o.paymentMethod !== 'cash_on_delivery'

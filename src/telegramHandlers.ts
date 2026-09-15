@@ -598,16 +598,67 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
 
 // ============ ADMIN CALLBACKS ============
 
+/** Manual invoices carrying a customer receipt that still awaits an admin decision. */
+function listPendingManualInvoicePayments(ctx: TelegramContext): { invoice: any; payment: any }[] {
+  const pending: { invoice: any; payment: any }[] = [];
+  if (!Array.isArray(ctx.invoices)) return pending;
+  for (const invoice of ctx.invoices) {
+    if (!Array.isArray(invoice?.payments)) continue;
+    for (const payment of invoice.payments) {
+      if (payment?.status === 'submitted') pending.push({ invoice, payment });
+    }
+  }
+  return pending;
+}
+
+function countPendingManualInvoicePayments(ctx: TelegramContext): number {
+  return listPendingManualInvoicePayments(ctx).length;
+}
+
+/** Every manual invoice payment an admin already decided on, newest first. */
+function listReviewedManualInvoicePayments(ctx: TelegramContext): { invoice: any; payment: any }[] {
+  const reviewed: { invoice: any; payment: any }[] = [];
+  if (!Array.isArray(ctx.invoices)) return reviewed;
+  for (const invoice of ctx.invoices) {
+    if (!Array.isArray(invoice?.payments)) continue;
+    for (const payment of invoice.payments) {
+      if (payment?.status === 'confirmed' || payment?.status === 'rejected') {
+        reviewed.push({ invoice, payment });
+      }
+    }
+  }
+  return reviewed.sort((a, b) => Date.parse(b.payment.reviewedAt || b.payment.updatedAt || b.payment.createdAt || '')
+    - Date.parse(a.payment.reviewedAt || a.payment.updatedAt || a.payment.createdAt || ''));
+}
+
+const INVOICE_STATUS_LABELS_FA: Record<string, string> = {
+  draft: 'پیش‌نویس',
+  issued: 'صادرشده',
+  pending_payment: 'در انتظار پرداخت',
+  payment_review: 'در انتظار بررسی پرداخت',
+  partially_paid: 'پرداخت جزئی',
+  paid: 'تسویه کامل',
+  overdue: 'سررسید گذشته',
+  cancelled: 'لغوشده',
+  refunded: 'بازپرداخت‌شده',
+};
+
 export async function handleAdminCallback(ctx: TelegramContext, data: string): Promise<boolean> {
 
   // Admin Panel Main Dashboard
   if (data === 'admin_panel') {
     const regularPendingReceipts = ctx.orders.filter(o => o.paymentReceiptImage && (o.status === 'pending_payment' || o.status === 'paid_checking') && !['confirmed', 'rejected'].includes(o.receiptReviewStatus || '')).length;
     const customPendingReceipts = ctx.customOrders.filter(o => o.paymentReceiptImage && o.prepaymentStatus === 'pending_confirmation').length;
-    const totalPendingReceipts = regularPendingReceipts + customPendingReceipts;
+    // Manual invoice receipts were missing from this counter, so the dashboard
+    // reported "0 فیش منتظر بررسی" while a customer receipt really was waiting.
+    const manualPendingReceipts = countPendingManualInvoicePayments(ctx);
+    const totalPendingReceipts = regularPendingReceipts + customPendingReceipts + manualPendingReceipts;
     const runningOrders = ctx.orders.filter(o => ['paid_checking', 'receipt_confirmed', 'baking', 'shipped'].includes(o.status)).length;
     const openTickets = ctx.supportTickets.filter(t => t.status === 'open' || t.status === 'in_progress').length;
-    const revenue = ctx.orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + o.totalAmount, 0);
+    // Confirmed manual-invoice money is real revenue too; leaving it out made
+    // the dashboard under-report every sale that was billed by invoice.
+    const revenue = ctx.orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + o.totalAmount, 0)
+      + (Array.isArray(ctx.invoices) ? ctx.invoices.reduce((s, inv) => s + (inv.paidAmount || 0), 0) : 0);
 
     const text = `👨‍🍳 <b>پنل مدیریت هوشمند قنادی شیرین‌کام</b>\n` +
       `────────────────────\n` +
@@ -638,18 +689,9 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     const customPendingReceipts = ctx.customOrders.filter(o => o.prepaymentStatus === 'pending_confirmation' || (o.status === 'price_quoted' && !o.isPrepaymentPaid && (o.prepaymentAmount || 0) > 0));
     
     // Find manual invoices with submitted payments waiting for approval
-    const manualPendingInvoices: { invoice: any; payment: any }[] = [];
-    if (Array.isArray(ctx.invoices)) {
-      ctx.invoices.forEach(inv => {
-        if (Array.isArray(inv.payments)) {
-          inv.payments.forEach((p: any) => {
-            if (p.status === 'submitted') {
-              manualPendingInvoices.push({ invoice: inv, payment: p });
-            }
-          });
-        }
-      });
-    }
+    const manualPendingInvoices = listPendingManualInvoicePayments(ctx);
+    const reviewedManualInvoices = listReviewedManualInvoicePayments(ctx);
+    const allManualInvoices = Array.isArray(ctx.invoices) ? ctx.invoices : [];
 
     const totalPendingReceipts = regularPendingReceipts.length + customPendingReceipts.length + manualPendingInvoices.length;
 
@@ -662,9 +704,26 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     text += `🔍 <b>فیش‌ها و واریزی‌های منتظر بررسی:</b> <b>${totalPendingReceipts} مورد</b>\n`;
     text += `────────────────────\n`;
 
+    text += `🧾 <b>فاکتورهای اختصاصی ثبت‌شده:</b> <b>${allManualInvoices.length} مورد</b>\n`;
+    text += `✅ <b>فیش‌های بررسی‌شده:</b> <b>${reviewedManualInvoices.length} مورد</b>\n`;
+    text += `────────────────────\n`;
+
+    // A reviewed invoice must stay reachable: previously this screen showed
+    // only pending receipts, so an approved/rejected invoice disappeared from
+    // the bot panel entirely and the admin could never look at it again.
+    const archiveButtons = [
+      ...(allManualInvoices.length
+        ? [[{ text: `🧾 همه فاکتورهای اختصاصی (${allManualInvoices.length})`, callback_data: 'admin_inv_all' }]]
+        : []),
+      ...(reviewedManualInvoices.length
+        ? [[{ text: `📁 فیش‌های بررسی‌شده (${reviewedManualInvoices.length})`, callback_data: 'admin_inv_reviewed' }]]
+        : []),
+    ];
+
     if (totalPendingReceipts === 0) {
       text += `✅ تمام فیش‌های واریزی بررسی شده‌اند و فیش جدیدی در صف بررسی نیست.`;
       await tgSend(ctx, text, [
+        ...archiveButtons,
         [{ text: '📦 سفارشات عادی', callback_data: 'admin_orders_list' }, { text: '🎂 کیک‌های سفارشی', callback_data: 'admin_custom_orders' }],
         [{ text: '👨‍🍳 بازگشت به منوی ادمین', callback_data: 'admin_panel' }]
       ]);
@@ -672,7 +731,10 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     }
 
     text += `📌 <b>فیش‌های ارسالی مشتریان جهت تأیید یا رد:</b>`;
-    await tgSend(ctx, text, [[{ text: '👨‍🍳 بازگشت به منوی ادمین', callback_data: 'admin_panel' }]]);
+    await tgSend(ctx, text, [
+      ...archiveButtons,
+      [{ text: '👨‍🍳 بازگشت به منوی ادمین', callback_data: 'admin_panel' }],
+    ]);
 
     // Manual invoices pending payments
     for (const item of manualPendingInvoices.slice(0, 5)) {
@@ -702,6 +764,114 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
         [{ text: '🎂 جزئیات سفارش دلخواه', callback_data: 'admin_custom_orders' }]
       ], co.paymentReceiptImage);
     }
+    return true;
+  }
+
+  // Browse every manual invoice, regardless of its review state.
+  if (data === 'admin_inv_all') {
+    const allInvoices = (Array.isArray(ctx.invoices) ? [...ctx.invoices] : [])
+      .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || '') - Date.parse(a.updatedAt || a.createdAt || ''));
+
+    if (!allInvoices.length) {
+      await tgSend(ctx, 'ℹ️ هنوز هیچ فاکتور اختصاصی‌ای ثبت نشده است.', [
+        [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
+        [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
+      ]);
+      return true;
+    }
+
+    await tgSend(ctx, `🧾 <b>همه فاکتورهای اختصاصی (${allInvoices.length} مورد)</b>\n────────────────────\nبرای دیدن فیش و جزئیات هر فاکتور، روی آن بزنید:`, [
+      ...allInvoices.slice(0, 20).map((inv: any) => {
+        const pending = Array.isArray(inv.payments) && inv.payments.some((p: any) => p.status === 'submitted');
+        const marker = pending ? '⏳' : inv.status === 'paid' ? '✅' : inv.status === 'cancelled' ? '🚫' : '📄';
+        return [{
+          text: `${marker} ${inv.invoiceNumber} — ${(inv.totalAmount || 0).toLocaleString('fa-IR')}`,
+          callback_data: `admin_inv_view_${inv.id}`,
+        }];
+      }),
+      [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
+      [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
+    ]);
+    return true;
+  }
+
+  // Archive of receipts an admin already approved or rejected.
+  if (data === 'admin_inv_reviewed') {
+    const reviewed = listReviewedManualInvoicePayments(ctx);
+    if (!reviewed.length) {
+      await tgSend(ctx, 'ℹ️ هنوز هیچ فیشی تأیید یا رد نشده است.', [
+        [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
+        [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
+      ]);
+      return true;
+    }
+
+    await tgSend(ctx, `📁 <b>فیش‌های بررسی‌شده (${reviewed.length} مورد)</b>\n────────────────────\nبرای دیدن تصویر فیش و جزئیات، روی هر مورد بزنید:`, [
+      ...reviewed.slice(0, 20).map(({ invoice, payment }) => [{
+        text: `${payment.status === 'confirmed' ? '✅' : '❌'} ${invoice.invoiceNumber} — ${(payment.amount || 0).toLocaleString('fa-IR')}`,
+        callback_data: `admin_inv_view_${invoice.id}`,
+      }]),
+      [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
+      [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
+    ]);
+    return true;
+  }
+
+  // Full detail of one manual invoice, including its receipt image. A pending
+  // receipt keeps its approve/reject actions here too, so the admin can decide
+  // straight from the invoice view rather than only from the pending queue.
+  if (data.startsWith('admin_inv_view_')) {
+    const invoiceId = data.replace('admin_inv_view_', '');
+    const inv = Array.isArray(ctx.invoices) ? ctx.invoices.find((i: any) => i.id === invoiceId) : undefined;
+    if (!inv) {
+      await tgSend(ctx, 'ℹ️ فاکتور یافت نشد.', [[{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }]]);
+      return true;
+    }
+
+    const payments = Array.isArray(inv.payments) ? inv.payments : [];
+    const pendingPayment = payments.find((p: any) => p.status === 'submitted');
+    const lastReviewed = payments
+      .filter((p: any) => p.status === 'confirmed' || p.status === 'rejected')
+      .sort((a: any, b: any) => Date.parse(b.reviewedAt || b.updatedAt || '') - Date.parse(a.reviewedAt || a.updatedAt || ''))[0];
+    const shownReceipt = pendingPayment?.receiptImage
+      || lastReviewed?.receiptImage
+      || payments.find((p: any) => p.receiptImage)?.receiptImage;
+
+    const lines = [
+      `🧾 <b>فاکتور ${escapeHtml(inv.invoiceNumber)}</b>`,
+      '────────────────────',
+      `👤 مشتری: <b>${escapeHtml(inv.customerName)}</b>`,
+      `📞 <code>${escapeHtml(inv.customerPhone || '---')}</code>`,
+      `💰 مبلغ کل: <b>${(inv.totalAmount || 0).toLocaleString('fa-IR')} تومان</b>`,
+      `✅ پرداخت‌شده: <b>${(inv.paidAmount || 0).toLocaleString('fa-IR')} تومان</b>`,
+      `⏳ مانده: <b>${(inv.remainingAmount || 0).toLocaleString('fa-IR')} تومان</b>`,
+      `📌 وضعیت: <b>${INVOICE_STATUS_LABELS_FA[inv.status] || inv.status}</b>`,
+    ];
+
+    if (payments.length) {
+      lines.push('────────────────────', '<b>سوابق پرداخت:</b>');
+      for (const p of payments.slice(-5)) {
+        const mark = p.status === 'confirmed' ? '✅ تأییدشده'
+          : p.status === 'rejected' ? '❌ ردشده'
+            : p.status === 'submitted' ? '⏳ در انتظار بررسی'
+              : p.status;
+        lines.push(`• ${(p.amount || 0).toLocaleString('fa-IR')} تومان — ${mark}`);
+        if (p.status === 'rejected' && p.reviewNote) lines.push(`   📌 دلیل رد: ${escapeHtml(p.reviewNote)}`);
+      }
+    }
+    if (!shownReceipt) lines.push('', '⚠️ تصویر فیشی برای این فاکتور ثبت نشده است.');
+
+    const buttons: any[][] = [];
+    if (pendingPayment) {
+      buttons.push([
+        { text: '✅ تأیید فیش', callback_data: `admin_inva_approve_${inv.id}_${pendingPayment.id}` },
+        { text: '❌ رد فیش', callback_data: `admin_inva_reject_${inv.id}_${pendingPayment.id}` },
+      ]);
+    }
+    buttons.push([{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }]);
+    buttons.push([{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]);
+
+    await tgSend(ctx, lines.join('\n'), buttons, shownReceipt);
     return true;
   }
 

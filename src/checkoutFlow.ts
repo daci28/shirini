@@ -2,6 +2,7 @@ import { BotSettings, Product, Order, DiscountCode, CustomerUser } from './types
 import { generateUniqueOrderNumber } from './utils/orderNumber';
 import { t as botText } from './data/botMessages';
 import { findBotCustomer, upsertBotCustomer, isRealName } from './utils/customers';
+import { validateDiscountCode } from './utils/discounts';
 
 interface SimpleMap<V> {
   get(key: string): V | undefined;
@@ -140,7 +141,8 @@ async function continueAfterDelivery(ctx: TelegramContext) {
   if (draft.deliveryMethod === 'delivery') {
     await sendAddressChoice(ctx);
   } else {
-    await finishRegistration(ctx);
+    // Pickup needs no address, so the coupon question is the last step here.
+    await askForDiscountCode(ctx);
   }
 }
 
@@ -249,11 +251,101 @@ export async function handleCheckoutState(ctx: TelegramContext, text: string): P
     if (!book.includes(deliveryAddress)) book.push(deliveryAddress);
     draft.addresses = book;
     ctx.userStates.set(ctx.chatId, state);
+    await askForDiscountCode(ctx);
+    return true;
+  }
+
+  // The customer typed a coupon code at the dedicated discount step.
+  if (state.mode === 'checkout_discount_code') {
+    const typedCode = text.trim();
+    if (!typedCode) {
+      await tgSend(ctx, '❌ لطفاً کد تخفیف را وارد کنید یا گزینهٔ «کد تخفیف ندارم» را بزنید:', [
+        [{ text: '🚫 کد تخفیف ندارم', callback_data: 'checkout_skip_discount' }],
+        CANCEL_ROW,
+      ]);
+      return true;
+    }
+
+    const { subtotal, cartItems } = calculateCartSubtotal(ctx);
+    const result = validateDiscountCode(typedCode, {
+      discounts: ctx.discounts,
+      products: ctx.products,
+      subtotal,
+      items: cartItems,
+    });
+
+    if (!result.valid) {
+      await tgSend(ctx, `❌ ${result.message}\n\nمی‌توانید کد دیگری وارد کنید یا بدون تخفیف ادامه دهید:`, [
+        [{ text: '🚫 ادامه بدون تخفیف', callback_data: 'checkout_skip_discount' }],
+        CANCEL_ROW,
+      ]);
+      return true;
+    }
+
+    draft.couponCode = result.discount!.code;
+    draft.discountAmount = result.discountAmount || 0;
+    ctx.userStates.set(ctx.chatId, state);
+    await tgSend(ctx, `🎉 <b>${result.message}</b>\n\n💰 مبلغ کسر شده: <b>${(result.discountAmount || 0).toLocaleString()} تومان</b>`);
     await finishRegistration(ctx);
     return true;
   }
 
   return false;
+}
+
+/** Cart subtotal honouring each product's own percentage discount. */
+function calculateCartSubtotal(ctx: TelegramContext): {
+  subtotal: number;
+  cartItems: { productId: string; quantity: number }[];
+} {
+  const cart = ctx.userCarts.get(ctx.chatId) || [];
+  let subtotal = 0;
+  const cartItems: { productId: string; quantity: number }[] = [];
+  cart.forEach((item: any) => {
+    const product = ctx.products.find(candidate => candidate.id === item.productId);
+    if (!product) return;
+    const effectivePrice = product.discountPercent
+      ? product.price * (100 - product.discountPercent) / 100
+      : product.price;
+    subtotal += effectivePrice * item.quantity;
+    cartItems.push({ productId: item.productId, quantity: item.quantity });
+  });
+  return { subtotal, cartItems };
+}
+
+/**
+ * Final step before payment: offer to apply a coupon.
+ *
+ * The panel has a full discount engine, but the bot checkout jumped straight
+ * from the address to the payment buttons and hard-coded `discountAmount = 0`,
+ * so a customer had no way to redeem any code.
+ */
+async function askForDiscountCode(ctx: TelegramContext) {
+  const state = ctx.userStates.get(ctx.chatId);
+  if (!state || !state.draftOrder) { await offerRestart(ctx); return; }
+
+  // Skip the question entirely when no code could possibly apply.
+  const now = new Date();
+  const hasUsableDiscount = (ctx.discounts || []).some(discount => (
+    discount.isActive
+    && (!discount.usageLimit || discount.usedCount < discount.usageLimit)
+    && (!discount.expiresAt || new Date(discount.expiresAt) >= now)
+  ));
+  if (!hasUsableDiscount) {
+    await finishRegistration(ctx);
+    return;
+  }
+
+  state.mode = 'checkout_discount_code';
+  ctx.userStates.set(ctx.chatId, state);
+  await tgSend(
+    ctx,
+    '🏷️ <b>کد تخفیف دارید؟</b>\n\nاگر کد تخفیف دارید، آن را همین‌جا تایپ و ارسال کنید تا روی سفارش اعمال شود.\n\nدر غیر این صورت روی «کد تخفیف ندارم» بزنید تا به مرحلهٔ پرداخت بروید.',
+    [
+      [{ text: '🚫 کد تخفیف ندارم', callback_data: 'checkout_skip_discount' }],
+      CANCEL_ROW,
+    ],
+  );
 }
 
 async function sendAddressChoice(ctx: TelegramContext) {
@@ -299,6 +391,7 @@ async function offerRestart(ctx: TelegramContext): Promise<boolean> {
 const CHECKOUT_CALLBACKS = new Set([
   'delivery_pickup', 'delivery_delivery',
   'payment_cash_on_delivery', 'payment_online', 'checkout_new_address',
+  'checkout_skip_discount',
 ]);
 
 export async function handleCheckoutCallback(ctx: TelegramContext, data: string): Promise<boolean> {
@@ -355,6 +448,14 @@ export async function handleCheckoutCallback(ctx: TelegramContext, data: string)
     }
     draft.customerAddress = chosen;
     ctx.userStates.set(ctx.chatId, state);
+    await askForDiscountCode(ctx);
+    return true;
+  }
+
+  if (data === 'checkout_skip_discount') {
+    draft.couponCode = undefined;
+    draft.discountAmount = 0;
+    ctx.userStates.set(ctx.chatId, state);
     await finishRegistration(ctx);
     return true;
   }
@@ -403,7 +504,23 @@ async function finishRegistration(ctx: TelegramContext) {
   const shippingFee = draft.deliveryMethod === 'delivery'
     ? (subtotal >= ctx.botSettings.freeShippingThreshold ? 0 : (ctx.botSettings.shippingFee || 0))
     : 0;
-  const totalAmount = subtotal + shippingFee;
+  // Re-validate the coupon against the final basket so an edited cart can never
+  // carry a stale or now-ineligible discount into the created order.
+  let discountAmount = 0;
+  if (draft.couponCode) {
+    const revalidated = validateDiscountCode(draft.couponCode, {
+      discounts: ctx.discounts,
+      products: ctx.products,
+      subtotal,
+      items: cart.map((item: any) => ({ productId: item.productId, quantity: item.quantity })),
+    });
+    if (revalidated.valid) {
+      discountAmount = Math.min(revalidated.discountAmount || 0, subtotal + shippingFee);
+    } else {
+      draft.couponCode = undefined;
+    }
+  }
+  const totalAmount = Math.max(0, subtotal + shippingFee - discountAmount);
 
   let summary = `✅ <b>اطلاعات شما ثبت شد.</b>\n\n`;
   summary += `👤 <b>نام:</b> ${draft.customerName}\n`;
@@ -418,13 +535,16 @@ async function finishRegistration(ctx: TelegramContext) {
   });
   summary += `\n💵 مجموع اقلام: <b>${subtotal.toLocaleString()}</b>\n`;
   summary += `🚚 هزینه ارسال: <b>${shippingFee === 0 ? 'رایگان' : shippingFee.toLocaleString()}</b>\n`;
+  if (discountAmount > 0) {
+    summary += `🏷️ تخفیف (${draft.couponCode}): <b>-${discountAmount.toLocaleString()}</b>\n`;
+  }
   summary += `💎 <b>مبلغ نهایی: ${totalAmount.toLocaleString()} تومان</b>\n\n`;
   summary += `💳 لطفاً <b>نحوهٔ پرداخت</b> را انتخاب کنید:`;
 
   draft.items = items;
   draft.subtotal = subtotal;
   draft.shippingFee = shippingFee;
-  draft.discountAmount = 0;
+  draft.discountAmount = discountAmount;
   draft.totalAmount = totalAmount;
   state.mode = 'checkout_payment_method';
   ctx.userStates.set(ctx.chatId, state);
@@ -461,6 +581,7 @@ async function createOrder(ctx: TelegramContext) {
     subtotal: draft.subtotal,
     shippingFee: draft.shippingFee,
     discountAmount: draft.discountAmount || 0,
+    couponCode: draft.couponCode || undefined,
     totalAmount: draft.totalAmount,
     status: draft.paymentMethod === 'cash_on_delivery' ? 'pending_payment' : 'paid_checking',
     deliveryMethod: draft.deliveryMethod || 'delivery',
@@ -470,6 +591,18 @@ async function createOrder(ctx: TelegramContext) {
   };
 
   ctx.orders.unshift(newOrder);
+
+  // Count the redemption so a coupon's usage limit is actually enforced for
+  // bot orders, exactly as the HTTP order endpoint already does.
+  if (newOrder.couponCode) {
+    const usedIndex = ctx.discounts.findIndex(
+      d => d.code.trim().toUpperCase() === newOrder.couponCode?.trim().toUpperCase()
+    );
+    if (usedIndex !== -1) {
+      ctx.discounts[usedIndex].usedCount = (ctx.discounts[usedIndex].usedCount || 0) + 1;
+    }
+  }
+
   ctx.userCarts.delete(ctx.chatId);
   ctx.userStates.delete(ctx.chatId);
 

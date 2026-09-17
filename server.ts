@@ -56,6 +56,7 @@ import {
   resolveManualInvoiceStatus,
 } from './src/utils/invoices';
 import { getBotText, renderBotText, BOT_MESSAGE_LIST } from './src/data/botMessages';
+import { validateDiscountCode } from './src/utils/discounts';
 import { upsertBotCustomer, findBotCustomer, isRealName, dedupeCustomers } from './src/utils/customers';
 
 // The admin UI is authenticated by an HttpOnly server session — never by a
@@ -1103,79 +1104,25 @@ async function startServer() {
       return;
     }
 
-    const cleanCode = code.trim().toUpperCase();
-    const discount = discounts.find(d => d.code.trim().toUpperCase() === cleanCode);
+    // Shared with the Telegram checkout so both honour the identical rules.
+    const result = validateDiscountCode(code, {
+      discounts,
+      products,
+      subtotal: Number(subtotal) || 0,
+      items: Array.isArray(items) ? items : [],
+    });
 
-    if (!discount) {
-      res.status(404).json({ valid: false, message: 'کد تخفیف وارد شده معتبر نمی‌باشد.' });
+    if (!result.valid) {
+      const status = result.reason === 'not_found' ? 404 : 400;
+      res.status(status).json({ valid: false, message: result.message });
       return;
-    }
-
-    if (!discount.isActive) {
-      res.status(400).json({ valid: false, message: 'این کد تخفیف در حال حاضر غیرفعال است.' });
-      return;
-    }
-
-    if (discount.usageLimit && discount.usedCount >= discount.usageLimit) {
-      res.status(400).json({ valid: false, message: 'سقف استفاده از این کد تخفیف به پایان رسیده است.' });
-      return;
-    }
-
-    if (discount.expiresAt && new Date(discount.expiresAt) < new Date()) {
-      res.status(400).json({ valid: false, message: 'مهلت استفاده از این کد تخفیف منقضی شده است.' });
-      return;
-    }
-
-    const orderSubtotal = Number(subtotal) || 0;
-    if (discount.minPurchaseAmount && orderSubtotal < discount.minPurchaseAmount) {
-      res.status(400).json({
-        valid: false,
-        message: `این کد تخفیف برای خریدهای بالای ${discount.minPurchaseAmount.toLocaleString('fa-IR')} تومان قابل استفاده است.`
-      });
-      return;
-    }
-
-    // If the code only applies to specific products, restrict the discount to those items
-    const applicable = discount.applicableProductIds || [];
-    let baseAmount = orderSubtotal;
-    if (applicable.length > 0) {
-      const cartItems: Array<{ productId: string; quantity: number }> = Array.isArray(items) ? items : [];
-      if (cartItems.length === 0) {
-        res.status(400).json({ valid: false, message: 'این کد تخفیف فقط برای محصولات خاصی قابل استفاده است که در سبد شما وجود ندارد.' });
-        return;
-      }
-      baseAmount = cartItems.reduce((sum: number, it: { productId: string; quantity: number }) => {
-        if (!applicable.includes(it.productId)) return sum;
-        const p = products.find(pr => pr.id === it.productId);
-        if (!p) return sum;
-        const eff = p.discountPercent ? p.price * (100 - p.discountPercent) / 100 : p.price;
-        return sum + eff * (it.quantity || 1);
-      }, 0);
-      if (baseAmount <= 0) {
-        res.status(400).json({ valid: false, message: 'این کد تخفیف فقط برای محصولات خاصی قابل استفاده است که در سبد شما وجود ندارد.' });
-        return;
-      }
-    }
-
-    // Calculate discount amount
-    let calculatedDiscount = 0;
-    if (discount.type === 'percentage') {
-      calculatedDiscount = Math.round((baseAmount * discount.value) / 100);
-      if (discount.maxDiscountAmount && calculatedDiscount > discount.maxDiscountAmount) {
-        calculatedDiscount = discount.maxDiscountAmount;
-      }
-    } else {
-      // Fixed amount
-      calculatedDiscount = Math.min(discount.value, baseAmount);
     }
 
     res.json({
       valid: true,
-      discount,
-      discountAmount: calculatedDiscount,
-      message: discount.type === 'percentage'
-        ? `کد تخفیف ${discount.value}٪ با موفقیت اعمال شد!`
-        : `تخفیف ${discount.value.toLocaleString('fa-IR')} تومانی با موفقیت اعمال شد!`
+      discount: result.discount,
+      discountAmount: result.discountAmount,
+      message: result.message,
     });
   });
 
@@ -5748,7 +5695,7 @@ async function startServer() {
             })
           }).catch(() => {});
         }
-      } else if (data === 'delivery_pickup' || data === 'delivery_delivery' || data === 'payment_cash_on_delivery' || data === 'payment_online' || data === 'has_discount' || data === 'no_discount' || data === 'confirm_order' || data === 'cancel_order' || data === 'checkout_new_address' || data.startsWith('checkout_saved_address_')) {
+      } else if (data === 'delivery_pickup' || data === 'delivery_delivery' || data === 'payment_cash_on_delivery' || data === 'payment_online' || data === 'checkout_skip_discount' || data === 'has_discount' || data === 'no_discount' || data === 'confirm_order' || data === 'cancel_order' || data === 'checkout_new_address' || data.startsWith('checkout_saved_address_')) {
         const tgCtx = { token, chatId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg: { from: cb.from } };
         const handled = await handleCheckoutCallback(tgCtx, data);
         if (handled) {

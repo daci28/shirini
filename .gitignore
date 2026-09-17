@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+package-lock.json
+data.json
+userCarts.json
+userStates.json
+settings.json
+product-images/

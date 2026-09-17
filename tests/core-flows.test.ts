@@ -424,6 +424,56 @@ async function testCheckoutAlwaysOffersDiscountStepAndAppliesCode() {
   assert.match(routerSource, /data === 'checkout_skip_discount'/);
 }
 
+async function testBotAdminActionsReportToForumTopics() {
+  // Admin actions taken inside the bot used to change data silently: only the
+  // customer and the acting admin were messaged, so the topic supergroup never
+  // learned about receipt decisions, status changes or catalog edits. Every
+  // mutating admin handler must reach notifyForumTopic.
+  const handlersSource = fs.readFileSync(new URL('../src/telegramHandlers.ts', import.meta.url), 'utf8');
+
+  function handlerBody(marker: string): string {
+    const start = handlersSource.indexOf(marker);
+    assert.notEqual(start, -1, `handler not found: ${marker}`);
+    // A handler block ends at the next top-level `if (data` / `if (state.mode`.
+    const rest = handlersSource.slice(start + marker.length);
+    const nextIf = rest.search(/\n  if \((?:data|state\.mode)\b/);
+    return nextIf === -1 ? rest : rest.slice(0, nextIf);
+  }
+
+  const mustReport: [string, string][] = [
+    ["if (data.startsWith('admin_rapprove_'))", 'finance'],
+    ["if (data.startsWith('admin_rreject_'))", 'finance'],
+    ["if (data.startsWith('admin_cpreapprove_'))", 'finance'],
+    ["if (data.startsWith('admin_cprereject_'))", 'finance'],
+    ["if (data.startsWith('admin_status_'))", 'orders'],
+    ["if (data.startsWith('admin_cstatus_'))", 'custom_orders'],
+    ["if (data.startsWith('admin_toggle_avail_'))", 'products'],
+    ["if (data.startsWith('admin_delete_prod_'))", 'products'],
+    ["if (data.startsWith('admin_toggle_disc_'))", 'discounts'],
+    ["if (data.startsWith('admin_del_disc_'))", 'discounts'],
+    ["if (state.mode === 'edit_price')", 'products'],
+    ["if (state.mode === 'add_discount')", 'discounts'],
+    ["if (state.mode === 'quote_price')", 'custom_orders'],
+  ];
+
+  for (const [marker, topicKey] of mustReport) {
+    const body = handlerBody(marker);
+    assert.ok(
+      body.includes('notifyForumTopic'),
+      `${marker} must report to the forum topic but never calls notifyForumTopic`,
+    );
+    assert.ok(
+      body.includes(`'${topicKey}'`),
+      `${marker} must report to the '${topicKey}' topic`,
+    );
+  }
+
+  // The invoice receipt decisions fixed earlier must keep reporting too.
+  for (const marker of ["if (data.startsWith('admin_inva_approve_'))", "if (data.startsWith('admin_inva_reject_'))"]) {
+    assert.ok(handlerBody(marker).includes('notifyForumTopic'), `${marker} lost its forum report`);
+  }
+}
+
 async function testCheckoutPersistsTelegramProfileOnOrder() {
   const userStates = new Map<string, any>();
   const userCarts = new Map<string, any[]>();
@@ -964,6 +1014,7 @@ async function main() {
   await testTicketDoesNotInventPhoneAndPhotoReplyKeepsFileIdContract();
   await testCheckoutPersistsTelegramProfileOnOrder();
   await testCheckoutAlwaysOffersDiscountStepAndAppliesCode();
+  await testBotAdminActionsReportToForumTopics();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

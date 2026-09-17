@@ -1038,6 +1038,11 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
           console.error(e);
         }
       }
+      await notifyForumTopic(
+        ctx,
+        'finance',
+        `✅ <b>فیش بیعانه سفارش دلخواه ${escapeHtml(co.orderNumber)} تأیید شد:</b>\n\n👤 مشتری: <b>${escapeHtml(co.customerName || '')}</b>\n💰 بیعانه: <b>${Number(co.prepaymentAmount || 0).toLocaleString('fa-IR')} تومان</b>\n📌 وضعیت: <b>آماده شروع پخت</b>\n👤 بررسی‌کننده: ادمین (ربات)`
+      );
       await tgSend(ctx, `✅ فیش بیعانه سفارش دلخواه <b>${co.orderNumber}</b> تأیید شد.\n📌 وضعیت: فیش تأیید شده (آماده پخت)`, [
         [{ text: '👩‍🍳 شروع پخت کیک', callback_data: `admin_cstatus_${co.id}_baking` }],
         [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
@@ -1070,6 +1075,11 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
           console.error(e);
         }
       }
+      await notifyForumTopic(
+        ctx,
+        'finance',
+        `❌ <b>فیش بیعانه سفارش دلخواه ${escapeHtml(co.orderNumber)} رد شد:</b>\n\n👤 مشتری: <b>${escapeHtml(co.customerName || '')}</b>\n💰 بیعانه: ${Number(co.prepaymentAmount || 0).toLocaleString('fa-IR')} تومان\n📌 از مشتری خواسته شد فیش را مجدد ارسال کند.\n👤 بررسی‌کننده: ادمین (ربات)`
+      );
       await tgSend(ctx, `❌ فیش بیعانه سفارش دلخواه <b>${co.orderNumber}</b> رد شد.`, [
         [{ text: '🧾 مرکز فاکتورها', callback_data: 'admin_invoices' }],
         [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]
@@ -1256,7 +1266,15 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   // Toggle availability
   if (data.startsWith('admin_toggle_avail_')) {
     const prod = ctx.products.find(p => p.id === data.replace('admin_toggle_avail_', ''));
-    if (prod) { prod.isAvailable = !prod.isAvailable; await tgSend(ctx, `${prod.name}: ${prod.isAvailable ? '🟢' : '🔴'}`, [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }]]); }
+    if (prod) {
+      prod.isAvailable = !prod.isAvailable;
+      await notifyForumTopic(
+        ctx,
+        'products',
+        `${prod.isAvailable ? '🟢' : '🔴'} <b>وضعیت موجودی محصول تغییر کرد:</b>\n\n🧁 محصول: <b>${escapeHtml(prod.name)}</b>\n📌 وضعیت: <b>${prod.isAvailable ? 'موجود' : 'ناموجود'}</b>\n👤 توسط: ادمین (ربات)`
+      );
+      await tgSend(ctx, `${prod.name}: ${prod.isAvailable ? '🟢' : '🔴'}`, [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }]]);
+    }
     return true;
   }
 
@@ -1273,7 +1291,16 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   // Delete product
   if (data.startsWith('admin_delete_prod_')) {
     const idx = ctx.products.findIndex(p => p.id === data.replace('admin_delete_prod_', ''));
-    if (idx !== -1) { const n = ctx.products[idx].name; ctx.products.splice(idx, 1); await tgSend(ctx, `🗑️ <b>${n}</b> حذف شد.`, [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }]]); }
+    if (idx !== -1) {
+      const n = ctx.products[idx].name;
+      ctx.products.splice(idx, 1);
+      await notifyForumTopic(
+        ctx,
+        'products',
+        `🗑️ <b>محصول از ویترین حذف شد:</b>\n\n🧁 محصول: <b>${escapeHtml(n)}</b>\n👤 توسط: ادمین (ربات)`
+      );
+      await tgSend(ctx, `🗑️ <b>${n}</b> حذف شد.`, [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }]]);
+    }
     return true;
   }
 
@@ -1381,6 +1408,11 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
           console.error('Failed to notify customer about receipt approval:', e);
         }
       }
+      await notifyForumTopic(
+        ctx,
+        'finance',
+        `✅ <b>فیش واریزی سفارش ${escapeHtml(order.orderNumber)} تأیید شد:</b>\n\n👤 مشتری: <b>${escapeHtml(order.customerName || '')}</b>\n💰 مبلغ: <b>${Number(order.totalAmount || 0).toLocaleString('fa-IR')} تومان</b>\n📌 وضعیت سفارش: <b>فیش تأیید شده</b>\n👤 بررسی‌کننده: ادمین (ربات)`
+      );
       await tgSend(ctx, `✅ فیش سفارش <b>${escapeHtml(order.orderNumber)}</b> تأیید شد و به مشتری اطلاع داده شد.\n📌 وضعیت: فیش تأیید شده\n👩‍🍳 برای شروع پخت، دکمه «شروع پخت» را جداگانه انتخاب کنید.`, [[{ text: '📦 سفارشات', callback_data: 'admin_orders_list' }], [{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]]);
     }
     return true;
@@ -1416,6 +1448,11 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
           console.error('Failed to notify customer about receipt rejection:', e);
         }
       }
+      await notifyForumTopic(
+        ctx,
+        'finance',
+        `❌ <b>فیش واریزی سفارش ${escapeHtml(order.orderNumber)} رد شد:</b>\n\n👤 مشتری: <b>${escapeHtml(order.customerName || '')}</b>\n💰 مبلغ: ${Number(order.totalAmount || 0).toLocaleString('fa-IR')} تومان\n📌 سفارش به «در انتظار پرداخت» بازگشت و از مشتری خواسته شد فیش را مجدد ارسال کند.\n👤 بررسی‌کننده: ادمین (ربات)`
+      );
       await tgSend(ctx, `❌ فیش سفارش <b>${escapeHtml(order.orderNumber)}</b> رد شد و از مشتری خواسته شد فیش را مجدد ارسال کند.`, [[{ text: '📦 سفارشات', callback_data: 'admin_orders_list' }], [{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]]);
     }
     return true;
@@ -1435,6 +1472,11 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
       }
       order.status = nextStatus as any; order.updatedAt = new Date().toISOString();
       const labels: any = { baking: '👩‍🍳 پخت', shipped: '🛵 ارسال', delivered: '✅ تحویل', cancelled: '❌ لغو' };
+      await notifyForumTopic(
+        ctx,
+        'orders',
+        `🔄 <b>وضعیت سفارش تغییر کرد:</b>\n\n🔖 سفارش: <code>${escapeHtml(order.orderNumber)}</code>\n👤 مشتری: <b>${escapeHtml(order.customerName || '')}</b>\n📌 وضعیت جدید: <b>${labels[nextStatus] || nextStatus}</b>\n👤 توسط: ادمین (ربات)`
+      );
       await tgSend(ctx, `✅ ${order.orderNumber}: <b>${labels[parts[1]] || parts[1]}</b>`, [[{ text: '📦 سفارشات', callback_data: 'admin_orders_list' }], [{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]]);
     }
     return true;
@@ -1498,6 +1540,12 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     }
     order.status = nextStatus as any;
     order.updatedAt = new Date().toISOString();
+    const customLabels: any = { baking: '👩‍🍳 در حال پخت', ready: '📦 آماده تحویل', delivered: '✅ تحویل شد', rejected: '❌ رد شد' };
+    await notifyForumTopic(
+      ctx,
+      'custom_orders',
+      `🔄 <b>وضعیت سفارش دلخواه تغییر کرد:</b>\n\n🔖 سفارش: <code>${escapeHtml(order.orderNumber)}</code>\n👤 مشتری: <b>${escapeHtml(order.customerName || '')}</b>\n📌 وضعیت جدید: <b>${customLabels[nextStatus] || nextStatus}</b>\n👤 توسط: ادمین (ربات)`
+    );
     await tgSend(ctx, `✅ وضعیت: <b>${nextStatus}</b>`, [[{ text: '🎂 سفارشات دلخواه', callback_data: 'admin_custom_orders' }]]);
     return true;
   }
@@ -1523,13 +1571,30 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
 
   if (data.startsWith('admin_toggle_disc_')) {
     const d = ctx.discounts.find(x => x.id === data.replace('admin_toggle_disc_', ''));
-    if (d) { d.isActive = !d.isActive; await tgSend(ctx, `${d.code}: ${d.isActive ? '🟢 فعال' : '🔴 غیرفعال'}`, [[{ text: '🎟️ تخفیف‌ها', callback_data: 'admin_discounts_list' }]]); }
+    if (d) {
+      d.isActive = !d.isActive;
+      await notifyForumTopic(
+        ctx,
+        'discounts',
+        `${d.isActive ? '🟢' : '🔴'} <b>وضعیت کد تخفیف تغییر کرد:</b>\n\n🔖 کد: <code>${escapeHtml(d.code)}</code>\n📌 وضعیت: <b>${d.isActive ? 'فعال' : 'غیرفعال'}</b>\n👤 توسط: ادمین (ربات)`
+      );
+      await tgSend(ctx, `${d.code}: ${d.isActive ? '🟢 فعال' : '🔴 غیرفعال'}`, [[{ text: '🎟️ تخفیف‌ها', callback_data: 'admin_discounts_list' }]]);
+    }
     return true;
   }
 
   if (data.startsWith('admin_del_disc_')) {
     const idx = ctx.discounts.findIndex(x => x.id === data.replace('admin_del_disc_', ''));
-    if (idx !== -1) { ctx.discounts.splice(idx, 1); await tgSend(ctx, '🗑️ حذف شد.', [[{ text: '🎟️ تخفیف‌ها', callback_data: 'admin_discounts_list' }]]); }
+    if (idx !== -1) {
+      const removedCode = ctx.discounts[idx].code;
+      ctx.discounts.splice(idx, 1);
+      await notifyForumTopic(
+        ctx,
+        'discounts',
+        `🗑️ <b>کد تخفیف حذف شد:</b>\n\n🔖 کد: <code>${escapeHtml(removedCode)}</code>\n👤 توسط: ادمین (ربات)`
+      );
+      await tgSend(ctx, '🗑️ حذف شد.', [[{ text: '🎟️ تخفیف‌ها', callback_data: 'admin_discounts_list' }]]);
+    }
     return true;
   }
 
@@ -1710,7 +1775,16 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
     const price = parseInt(text.replace(/[^0-9]/g, ''));
     if (isNaN(price)) { await tgSend(ctx, '❌ فقط عدد:'); return true; }
     const prod = ctx.products.find(p => p.id === state.productId);
-    if (prod) { prod.price = price; await tgSend(ctx, `✅ ${prod.name}: <b>${price.toLocaleString()}</b>`, [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }]]); }
+    if (prod) {
+      const previousPrice = prod.price;
+      prod.price = price;
+      await notifyForumTopic(
+        ctx,
+        'products',
+        `💰 <b>قیمت محصول تغییر کرد:</b>\n\n🧁 محصول: <b>${escapeHtml(prod.name)}</b>\n📉 قیمت قبلی: ${Number(previousPrice || 0).toLocaleString('fa-IR')} تومان\n📈 قیمت جدید: <b>${price.toLocaleString('fa-IR')} تومان</b>\n👤 توسط: ادمین (ربات)`
+      );
+      await tgSend(ctx, `✅ ${prod.name}: <b>${price.toLocaleString()}</b>`, [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }]]);
+    }
     ctx.userStates.delete(ctx.chatId);
     return true;
   }
@@ -1724,6 +1798,11 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
     const type = parts[2] === 'fixed' ? 'fixed' : 'percentage';
     ctx.discounts.unshift({ id: `disc-${Date.now()}`, code, type, value, isActive: true, usedCount: 0, createdAt: new Date().toISOString(), description: '' });
     ctx.userStates.delete(ctx.chatId);
+    await notifyForumTopic(
+      ctx,
+      'discounts',
+      `🎟️ <b>کد تخفیف جدید تعریف شد:</b>\n\n🔖 کد: <code>${escapeHtml(code)}</code>\n💸 مقدار: <b>${type === 'percentage' ? value + '٪' : value.toLocaleString('fa-IR') + ' تومان'}</b>\n📌 وضعیت: فعال\n👤 توسط: ادمین (ربات)`
+    );
     await tgSend(ctx, `🎉 کد <code>${code}</code> (${type === 'percentage' ? value + '٪' : value.toLocaleString()}) اضافه شد!`, [[{ text: '🎟️ تخفیف‌ها', callback_data: 'admin_discounts_list' }]]);
     return true;
   }
@@ -1824,6 +1903,11 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
       delete order.prepaymentReviewedAt;
       delete order.prepaymentRejectReason;
       order.updatedAt = new Date().toISOString();
+      await notifyForumTopic(
+        ctx,
+        'custom_orders',
+        `💰 <b>سفارش دلخواه قیمت‌گذاری شد:</b>\n\n🔖 سفارش: <code>${escapeHtml(order.orderNumber)}</code>\n👤 مشتری: <b>${escapeHtml(order.customerName || '')}</b>\n💵 مبلغ نهایی: <b>${price.toLocaleString('fa-IR')} تومان</b>\n💳 بیعانه: <b>${Number(order.prepaymentAmount || 0).toLocaleString('fa-IR')} تومان</b>\n👤 توسط: ادمین (ربات)`
+      );
       await tgSend(ctx, `✅ قیمت: <b>${price.toLocaleString()}</b>\nبیعانه: <b>${order.prepaymentAmount.toLocaleString()}</b>\n⏳ فیش بیعانه پس از ارسال، نیازمند تأیید ادمین است.`, [[{ text: '🎂 سفارشات', callback_data: 'admin_custom_orders' }]]);
     }
     ctx.userStates.delete(ctx.chatId);

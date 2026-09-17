@@ -324,18 +324,9 @@ async function askForDiscountCode(ctx: TelegramContext) {
   const state = ctx.userStates.get(ctx.chatId);
   if (!state || !state.draftOrder) { await offerRestart(ctx); return; }
 
-  // Skip the question entirely when no code could possibly apply.
-  const now = new Date();
-  const hasUsableDiscount = (ctx.discounts || []).some(discount => (
-    discount.isActive
-    && (!discount.usageLimit || discount.usedCount < discount.usageLimit)
-    && (!discount.expiresAt || new Date(discount.expiresAt) >= now)
-  ));
-  if (!hasUsableDiscount) {
-    await finishRegistration(ctx);
-    return;
-  }
-
+  // The question is always asked, even when the shop currently has no usable
+  // code. Skipping it silently made the step look missing to the customer, and
+  // a code can be activated in the panel at any moment between these steps.
   state.mode = 'checkout_discount_code';
   ctx.userStates.set(ctx.chatId, state);
   await tgSend(

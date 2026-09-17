@@ -343,6 +343,87 @@ function testCustomerImagePanelsUseSharedZoomViewer() {
   assert.match(serverSource, /custom_product_photos_more/);
 }
 
+async function testCheckoutAlwaysOffersDiscountStepAndAppliesCode() {
+  // The coupon question must appear even when the shop has no usable code:
+  // silently skipping it made the feature look missing to the customer.
+  const emptyStates = new Map<string, any>();
+  const emptyCarts = new Map<string, any[]>();
+  const noCodeCtx = makeContext({
+    chatId: '551100',
+    discounts: [],
+    userStates: emptyStates,
+    userCarts: emptyCarts,
+    products: [{ id: 'p1', name: 'باقلوا', productCode: 'P-1', price: 200000, unit: 'کیلوگرم' }],
+    botSettings: { shippingFee: 0, freeShippingThreshold: 0 },
+  });
+  emptyCarts.set(noCodeCtx.chatId, [{ productId: 'p1', quantity: 1 }]);
+  await startCheckout(noCodeCtx);
+  assert.equal(await handleCheckoutState(noCodeCtx, 'مریم احمدی'), true);
+  assert.equal(await handleCheckoutState(noCodeCtx, '09121112233'), true);
+  assert.equal(await handleCheckoutCallback(noCodeCtx, 'delivery_pickup'), true);
+  assert.equal(emptyStates.get(noCodeCtx.chatId).mode, 'checkout_discount_code');
+
+  // A valid percentage code is capped by maxDiscountAmount and lands on the order.
+  const states = new Map<string, any>();
+  const carts = new Map<string, any[]>();
+  const orders: any[] = [];
+  const discounts: any[] = [{
+    id: 'd1', code: 'SHIRIN20', type: 'percentage', value: 20,
+    maxDiscountAmount: 50000, isActive: true, usedCount: 0,
+    createdAt: new Date().toISOString(),
+  }];
+  const ctx = makeContext({
+    chatId: '551101',
+    orders,
+    discounts,
+    userStates: states,
+    userCarts: carts,
+    products: [{ id: 'p1', name: 'کیک', productCode: 'P-1', price: 300000, unit: 'عدد' }],
+    botSettings: { shippingFee: 0, freeShippingThreshold: 0 },
+  });
+  carts.set(ctx.chatId, [{ productId: 'p1', quantity: 2 }]);
+  await startCheckout(ctx);
+  assert.equal(await handleCheckoutState(ctx, 'رضا کریمی'), true);
+  assert.equal(await handleCheckoutState(ctx, '09124445566'), true);
+  assert.equal(await handleCheckoutCallback(ctx, 'delivery_pickup'), true);
+  // Lower-case input must still match, and the 20% of 600000 is capped at 50000.
+  assert.equal(await handleCheckoutState(ctx, 'shirin20'), true);
+  assert.equal(await handleCheckoutCallback(ctx, 'payment_cash_on_delivery'), true);
+
+  assert.equal(orders.length, 1);
+  assert.equal(orders[0].couponCode, 'SHIRIN20');
+  assert.equal(orders[0].discountAmount, 50000);
+  assert.equal(orders[0].totalAmount, 550000);
+  // The redemption must be counted so usage limits are enforced.
+  assert.equal(discounts[0].usedCount, 1);
+
+  // An invalid code keeps the customer on the discount step instead of failing.
+  const badStates = new Map<string, any>();
+  const badCarts = new Map<string, any[]>();
+  const badCtx = makeContext({
+    chatId: '551102',
+    discounts: [{
+      id: 'd2', code: 'OFFCODE', type: 'percentage', value: 50,
+      isActive: false, usedCount: 0, createdAt: new Date().toISOString(),
+    }],
+    userStates: badStates,
+    userCarts: badCarts,
+    products: [{ id: 'p1', name: 'کیک', productCode: 'P-1', price: 100000, unit: 'عدد' }],
+    botSettings: { shippingFee: 0, freeShippingThreshold: 0 },
+  });
+  badCarts.set(badCtx.chatId, [{ productId: 'p1', quantity: 1 }]);
+  await startCheckout(badCtx);
+  assert.equal(await handleCheckoutState(badCtx, 'سارا نوری'), true);
+  assert.equal(await handleCheckoutState(badCtx, '09127778899'), true);
+  assert.equal(await handleCheckoutCallback(badCtx, 'delivery_pickup'), true);
+  assert.equal(await handleCheckoutState(badCtx, 'OFFCODE'), true);
+  assert.equal(badStates.get(badCtx.chatId).mode, 'checkout_discount_code');
+
+  // The server must route the skip button, otherwise the button looks dead.
+  const routerSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  assert.match(routerSource, /data === 'checkout_skip_discount'/);
+}
+
 async function testCheckoutPersistsTelegramProfileOnOrder() {
   const userStates = new Map<string, any>();
   const userCarts = new Map<string, any[]>();
@@ -361,12 +442,13 @@ async function testCheckoutPersistsTelegramProfileOnOrder() {
   userCarts.set(ctx.chatId, [{ productId: 'p1', quantity: 1 }]);
 
   // Flow (new order): name is the FIRST step -> phone -> delivery method
-  // (inline) -> address (courier) -> payment.
+  // (inline) -> address (courier) -> discount code -> payment.
   await startCheckout(ctx);
   assert.equal(await handleCheckoutState(ctx, 'لیلا مرادی'), true);
   assert.equal(await handleCheckoutState(ctx, '09120000000'), true);
   assert.equal(await handleCheckoutCallback(ctx, 'delivery_delivery'), true);
   assert.equal(await handleCheckoutState(ctx, 'تهران، نمونه آدرس'), true);
+  assert.equal(await handleCheckoutCallback(ctx, 'checkout_skip_discount'), true);
   assert.equal(await handleCheckoutCallback(ctx, 'payment_cash_on_delivery'), true);
 
   assert.equal(orders.length, 1);
@@ -881,6 +963,7 @@ async function main() {
   await testTicketUsesTelegramAccountAndKnownPhone();
   await testTicketDoesNotInventPhoneAndPhotoReplyKeepsFileIdContract();
   await testCheckoutPersistsTelegramProfileOnOrder();
+  await testCheckoutAlwaysOffersDiscountStepAndAppliesCode();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

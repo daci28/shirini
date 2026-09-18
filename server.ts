@@ -737,7 +737,8 @@ async function startServer() {
       sendToTelegramTopic(
         'products',
         `🧁 <b>محصول جدید به ویترین اضافه شد!</b>\n\n🎂 <b>نام:</b> ${newProduct.name}\n📂 <b>دسته‌بندی:</b> ${newProduct.category}\n💰 <b>قیمت:</b> ${newProduct.price.toLocaleString('fa-IR')} تومان / ${newProduct.unit}\n✨ <b>وضعیت:</b> ${newProduct.isAvailable ? 'موجود و آماده سفارش' : 'ناموجود'}`,
-        newProduct.image
+        // The whole gallery is reported, not just the cover picture.
+        [newProduct.image, ...(Array.isArray(newProduct.images) ? newProduct.images : [])]
       );
 
       res.status(201).json(newProduct);
@@ -1434,7 +1435,7 @@ async function startServer() {
       sendToTelegramTopic(
         'custom_orders',
         `✨🎂 <b>سفارش جدید شیرینی/کیک دلخواه ثبت شد!</b>\n\n🔖 <b>کد رهگیری:</b> <code>${newOrder.orderNumber}</code>\n👤 <b>مشتری:</b> ${newOrder.customerName} (${newOrder.customerPhone})\n🧁 <b>نوع شیرینی:</b> ${newOrder.pastryType}\n⚖️ <b>وزن/تعداد:</b> ${newOrder.weightKg ? `${newOrder.weightKg} کیلوگرم` : ''} ${newOrder.servingCount ? `(${newOrder.servingCount} نفر)` : ''}\n🎨 <b>طرح و ویژگی‌های درخواستی:</b>\n<i>${newOrder.shapeAndDesign}</i>\n${newOrder.writingOnCake ? `✍️ <b>متن روی کیک:</b> «${newOrder.writingOnCake}»\n` : ''}📅 <b>زمان تحویل:</b> پس از تأیید سفارش با مشتری هماهنگ می‌شود.\n\n🔍 وضعیت: <b>در انتظار بررسی و قیمت‌گذاری قناد</b>`,
-        newOrder.referenceImages?.[0]
+        newOrder.referenceImages
       );
 
       res.status(201).json(newOrder);
@@ -2614,7 +2615,7 @@ async function startServer() {
   async function sendToTelegramTopic(
     key: ForumTopicKey,
     messageText: string,
-    photoUrl?: string
+    photoUrl?: string | string[]
   ) {
     const groupId = String(botSettings.forumGroupId || '').trim();
     if (!groupId) {
@@ -2636,6 +2637,55 @@ async function startServer() {
     }
 
     const threadId = topic?.threadId ? Number(topic.threadId) : undefined;
+
+    // A report may carry several pictures (a product gallery, the reference
+    // photos of a custom order). Telegram shows more than one only through
+    // sendMediaGroup, so an album is sent whenever there are at least two.
+    // Only the first item may carry the caption, which keeps the report text
+    // attached to the album.
+    const galleryImages = (Array.isArray(photoUrl) ? photoUrl : [photoUrl])
+      .map((image) => (typeof image === 'string' ? image.trim() : ''))
+      .filter((image) => image.length > 0)
+      // Base64 data URLs cannot be referenced inside a JSON media group, and a
+      // mixed album is rejected wholesale, so those keep the single-photo path.
+      .filter((image) => !image.startsWith('data:'));
+    const uniqueGalleryImages = Array.from(new Set(galleryImages)).slice(0, 10);
+
+    if (uniqueGalleryImages.length > 1) {
+      const media = uniqueGalleryImages.map((image, index) => ({
+        type: 'photo',
+        media: image,
+        ...(index === 0 ? { caption: messageText, parse_mode: 'HTML' } : {}),
+      }));
+      const albumPayload: any = { chat_id: groupId, media };
+      if (threadId) albumPayload.message_thread_id = threadId;
+      try {
+        const albumRes = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(albumPayload),
+        });
+        const albumData = (await albumRes.json().catch(() => ({}))) as any;
+        if (albumData?.ok) return;
+
+        if (threadId) {
+          delete albumPayload.message_thread_id;
+          const retryRes = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(albumPayload),
+          });
+          const retryData = (await retryRes.json().catch(() => ({}))) as any;
+          if (retryData?.ok) return;
+        }
+        console.error(`[ForumTopic:${key}] sendMediaGroup failed, falling back to a single photo.`);
+      } catch (albumErr) {
+        console.error(`[ForumTopic:${key}] sendMediaGroup error:`, albumErr);
+      }
+    }
+
+    // Single picture, or an album that could not be delivered.
+    photoUrl = Array.isArray(photoUrl) ? (uniqueGalleryImages[0] || photoUrl.find((image) => typeof image === 'string' && image.trim()) || undefined) : photoUrl;
 
     try {
       if (photoUrl) {
@@ -5205,7 +5255,7 @@ async function startServer() {
         sendToTelegramTopic(
           'custom_orders',
           `🎂 <b>سفارش جدید کیک/شیرینی دلخواه ثبت شد!</b>\n\n🔖 <b>کد رهگیری:</b> <code>${newCustomOrder.orderNumber}</code>\n👤 <b>مشتری:</b> ${newCustomOrder.customerName} ${newCustomOrder.customerUsername ? `(@${newCustomOrder.customerUsername})` : ''}\n🧁 <b>نوع:</b> ${newCustomOrder.pastryType}\n🎨 <b>طرح و توضیحات:</b>\n<i>${escapeTelegramHtml(newCustomOrder.shapeAndDesign || 'بدون توضیحات')}</i>\n⏳ وضعیت: <b>در انتظار قیمت‌گذاری سرقناد</b>`,
-          newCustomOrder.referenceImages?.[0]
+          newCustomOrder.referenceImages
         );
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',

@@ -519,6 +519,43 @@ async function testInvoicePaymentLifecycleReportsToFinanceTopic() {
   );
 }
 
+async function testMultiPhotoReportsAreSentAsAlbums() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  // A report carrying several pictures must go out as an album; sendPhoto can
+  // only ever show one, which is why galleries looked truncated in the group.
+  assert.match(serverSource, /sendToTelegramTopic\([\s\S]{0,200}photoUrl\?: string \| string\[\]/);
+  assert.ok(
+    serverSource.includes('sendMediaGroup'),
+    'multi-photo topic reports must use sendMediaGroup',
+  );
+  // Telegram accepts a caption on the first album item only.
+  assert.match(serverSource, /index === 0 \? \{ caption: messageText, parse_mode: 'HTML' \} : \{\}/);
+  // Telegram rejects an album larger than 10 items.
+  assert.match(serverSource, /\.slice\(0, 10\)/);
+  // Base64 payloads cannot be referenced inside a JSON media group.
+  assert.match(serverSource, /!image\.startsWith\('data:'\)/);
+
+  // The callers must hand over their whole gallery rather than one picture.
+  assert.ok(
+    serverSource.includes('[newProduct.image, ...(Array.isArray(newProduct.images) ? newProduct.images : [])]'),
+    'a new product must report its full gallery',
+  );
+  assert.ok(
+    /sendToTelegramTopic\([\s\S]{0,1400}newOrder\.referenceImages\s*\n/.test(serverSource),
+    'a custom order created over HTTP must report every reference photo',
+  );
+  assert.ok(
+    /sendToTelegramTopic\([\s\S]{0,1400}newCustomOrder\.referenceImages\s*\n/.test(serverSource),
+    'a custom order created in the bot must report every reference photo',
+  );
+  // Regression: no caller may go back to sending only the first picture.
+  assert.ok(
+    !/referenceImages\?\.\[0\]/.test(serverSource),
+    'reference photo reports must not fall back to the first image only',
+  );
+}
+
 async function testCheckoutPersistsTelegramProfileOnOrder() {
   const userStates = new Map<string, any>();
   const userCarts = new Map<string, any[]>();
@@ -1061,6 +1098,7 @@ async function main() {
   await testCheckoutAlwaysOffersDiscountStepAndAppliesCode();
   await testBotAdminActionsReportToForumTopics();
   await testInvoicePaymentLifecycleReportsToFinanceTopic();
+  await testMultiPhotoReportsAreSentAsAlbums();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

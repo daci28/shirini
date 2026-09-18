@@ -2416,11 +2416,18 @@ async function startServer() {
     }
 
     const now = new Date().toISOString();
+    // Keep the receipt attached to the payment. Reviewing a submitted payment
+    // requires a receipt, so dropping it here left admin-registered payments
+    // permanently unreviewable and their approval never reached the group.
+    const registeredReceiptImage = typeof paymentInput.receiptImage === 'string'
+      ? paymentInput.receiptImage.trim()
+      : '';
     invoice.payments.push({
       id: `payment-manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       amount: paymentAmount,
       method: paymentMethod,
       status: paymentStatus,
+      receiptImage: registeredReceiptImage || undefined,
       transactionReference: trimInvoiceText(paymentInput.transactionReference, 240) || undefined,
       notes: trimInvoiceText(paymentInput.notes, 1000) || undefined,
       createdAt: now,

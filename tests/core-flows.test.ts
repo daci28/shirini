@@ -474,6 +474,51 @@ async function testBotAdminActionsReportToForumTopics() {
   }
 }
 
+async function testInvoicePaymentLifecycleReportsToFinanceTopic() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  function endpointBody(marker: string): string {
+    const start = serverSource.indexOf(marker);
+    assert.notEqual(start, -1, `endpoint not found: ${marker}`);
+    const rest = serverSource.slice(start + marker.length);
+    const nextRoute = rest.search(/\n  app\.(get|post|put|patch|delete)\(/);
+    return nextRoute === -1 ? rest : rest.slice(0, nextRoute);
+  }
+
+  // Every stage of an invoice's money trail must reach the finance topic.
+  const stages: string[] = [
+    "app.post('/api/invoices'",
+    "app.post('/api/invoices/:id/send-to-customer'",
+    "app.post('/api/invoices/:id/payments'",
+    "app.post('/api/invoices/:id/payments/:paymentId/review'",
+  ];
+  for (const marker of stages) {
+    const body = endpointBody(marker);
+    assert.ok(
+      body.includes("sendToTelegramTopic("),
+      `${marker} must report to a forum topic`,
+    );
+    assert.ok(body.includes("'finance'"), `${marker} must report to the finance topic`);
+  }
+
+  // A receipt sent by the customer in the bot is reported with its photo.
+  assert.match(serverSource, /recordManualInvoiceReceipt[\s\S]{0,1200}فیش فاکتور اختصاصی دریافت شد/);
+
+  // Registering a payment must persist its receipt: reviewing a submitted
+  // payment requires one, so dropping it made the payment unreviewable and its
+  // approval could never be reported.
+  const registerBody = endpointBody("app.post('/api/invoices/:id/payments'");
+  assert.ok(
+    /receiptImage:/.test(registerBody),
+    'a payment registered from the panel must keep its receiptImage',
+  );
+  const reviewBody = endpointBody("app.post('/api/invoices/:id/payments/:paymentId/review'");
+  assert.ok(
+    reviewBody.includes('!payment.receiptImage'),
+    'review still gates on a receipt being present',
+  );
+}
+
 async function testCheckoutPersistsTelegramProfileOnOrder() {
   const userStates = new Map<string, any>();
   const userCarts = new Map<string, any[]>();
@@ -1015,6 +1060,7 @@ async function main() {
   await testCheckoutPersistsTelegramProfileOnOrder();
   await testCheckoutAlwaysOffersDiscountStepAndAppliesCode();
   await testBotAdminActionsReportToForumTopics();
+  await testInvoicePaymentLifecycleReportsToFinanceTopic();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

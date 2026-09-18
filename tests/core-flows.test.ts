@@ -1089,6 +1089,92 @@ function testSingleProfilePerTelegramAccountAndAddressBook() {
   assert.equal(merged.some((c) => String(c.telegramId).startsWith('manual_')), true);
 }
 
+/**
+ * Request 9: forced channel membership.
+ *
+ * The gate must hold the customer at /start, survive a stale keyboard button,
+ * stay completely inert when the admin switches it off, and never lock anyone
+ * out because of a channel the bot cannot read.
+ */
+async function testRequiredChannelJoinGate() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  assert.ok(
+    /function getActiveRequiredChannels\(\)[\s\S]*?if \(!botSettings\.requiredChannelsEnabled\) return \[\];/.test(serverSource),
+    'the master switch must short-circuit the gate so it can be turned off from the panel'
+  );
+
+  assert.ok(
+    /getActiveRequiredChannels\(\)[\s\S]*?filter\([\s\S]*?channel\.enabled !== false/.test(serverSource),
+    'a channel disabled in the panel must be skipped'
+  );
+
+  const startBlock = serverSource.slice(serverSource.indexOf("if (text === '/start')"));
+  const gateAtStart = startBlock.indexOf('blockedByRequiredChannels');
+  const menuAtStart = startBlock.indexOf('await sendBotMainMenu');
+  assert.ok(gateAtStart > -1, '/start must consult the membership gate');
+  assert.ok(
+    gateAtStart < menuAtStart,
+    'the gate must run BEFORE the main menu, otherwise the customer can keep ordering'
+  );
+
+  assert.ok(
+    /data === 'check_required_channels'/.test(serverSource),
+    'the "I joined" button needs a callback handler that re-checks membership'
+  );
+
+  const callbackSection = serverSource.slice(serverSource.indexOf('} else if (update.callback_query) {'));
+  const recheck = callbackSection.indexOf("data === 'check_required_channels'");
+  const callbackGate = callbackSection.indexOf('blockedByRequiredChannels');
+  assert.ok(callbackGate > -1, 'customer callbacks must be gated too, not only /start');
+  assert.ok(
+    recheck < callbackGate,
+    'the re-check callback must be handled before the gate, or the customer could never get past it'
+  );
+
+  // Fail-open: an unreadable channel (bot is not an admin there) is skipped
+  // instead of blocking every customer.
+  assert.ok(
+    /if \(!data\?\.ok\) \{[\s\S]*?continue;/.test(serverSource),
+    'an unreadable channel must be skipped, never treated as "not joined"'
+  );
+  assert.ok(
+    /catch \(err\) \{[\s\S]*?\[requiredChannels\] getChatMember failed/.test(serverSource),
+    'a getChatMember network error must not lock customers out'
+  );
+
+  const joinedStatuses = serverSource.match(/const joinedStatuses = new Set\(\[(.*?)\]\)/);
+  assert.ok(joinedStatuses, 'membership statuses must be defined explicitly');
+  for (const status of ['creator', 'administrator', 'member', 'restricted']) {
+    assert.ok(
+      joinedStatuses[1].includes(status),
+      `"${status}" counts as joined and must not be rejected`
+    );
+  }
+  assert.ok(!joinedStatuses[1].includes('left'), '"left" must not count as joined');
+  assert.ok(!joinedStatuses[1].includes('kicked'), '"kicked" must not count as joined');
+
+  // Admins stay exempt so a broken channel id can always be fixed from the bot.
+  assert.ok(
+    /blockedByRequiredChannels[\s\S]*?if \(isTelegramAdmin\(String\(userId\)\)\) return false;/.test(serverSource),
+    'administrators must be exempt from the gate'
+  );
+
+  // The panel must be able to store and switch the feature.
+  const typesSource = fs.readFileSync(new URL('../src/types.ts', import.meta.url), 'utf8');
+  assert.ok(/requiredChannelsEnabled\?: boolean;/.test(typesSource), 'BotSettings needs the on/off switch');
+  assert.ok(/requiredChannels\?: RequiredChannel\[\];/.test(typesSource), 'BotSettings needs the channel list');
+
+  const uiSource = fs.readFileSync(new URL('../src/components/BotSettings.tsx', import.meta.url), 'utf8');
+  assert.ok(
+    /handleInputChange\('requiredChannelsEnabled', event\.target\.checked\)/.test(uiSource),
+    'the panel must expose a toggle to turn the feature off'
+  );
+  assert.ok(/addRequiredChannel|removeRequiredChannel/.test(uiSource), 'the panel must manage the channel list');
+
+  console.log('✅ required channel join gate blocks, re-checks, fails open and can be switched off');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1099,6 +1185,7 @@ async function main() {
   await testBotAdminActionsReportToForumTopics();
   await testInvoicePaymentLifecycleReportsToFinanceTopic();
   await testMultiPhotoReportsAreSentAsAlbums();
+  await testRequiredChannelJoinGate();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

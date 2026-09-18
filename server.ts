@@ -38,7 +38,8 @@ import {
   InvoicePaymentStatus,
   InvoiceStatus,
   ForumTopicKey,
-  ForumTopicConfig
+  ForumTopicConfig,
+  RequiredChannel
 } from './src/types';
 import { handleCustomerCallback, handleAdminCallback, handleTextMessage, handleAdminCatSelect } from './src/telegramHandlers';
 import { loadSettings, saveSettings } from './src/persistSettings';
@@ -1175,6 +1176,44 @@ async function startServer() {
       }
       updates.webAdminPasswordHash = hashPanelPassword(updates.webAdminPassword);
       delete updates.webAdminPassword;
+    }
+
+    // Sanitize the forced-join channel list. A malformed entry would otherwise
+    // lock every customer out of the bot, so anything unusable is rejected here
+    // rather than at membership-check time.
+    if (Object.prototype.hasOwnProperty.call(updates, 'requiredChannels')) {
+      const rawChannels = (updates as any).requiredChannels;
+      if (rawChannels !== null && !Array.isArray(rawChannels)) {
+        res.status(400).json({ error: 'فهرست کانال‌های اجباری باید به‌صورت لیست ارسال شود.' });
+        return;
+      }
+      const cleanedChannels: RequiredChannel[] = [];
+      for (const rawChannel of (rawChannels || []).slice(0, 10)) {
+        if (!rawChannel || typeof rawChannel !== 'object') continue;
+        let chatId = String((rawChannel as any).chatId ?? '').trim();
+        if (!chatId) continue;
+        // Accept a full t.me link, a bare username or a numeric id.
+        const linkMatch = chatId.match(/^https?:\/\/t\.me\/(?:s\/)?([^/?#]+)/i);
+        if (linkMatch) chatId = linkMatch[1];
+        if (!/^-?\d+$/.test(chatId) && !chatId.startsWith('@')) chatId = `@${chatId}`;
+        if (!/^@[A-Za-z0-9_]{4,}$/.test(chatId) && !/^-100\d+$/.test(chatId)) {
+          res.status(400).json({ error: `شناسه کانال «${chatId}» معتبر نیست. یوزرنیم عمومی (مثل @channel) یا شناسه عددی (مثل -100…) وارد کنید.` });
+          return;
+        }
+        const inviteLink = String((rawChannel as any).inviteLink ?? '').trim();
+        if (chatId.startsWith('-100') && !inviteLink) {
+          res.status(400).json({ error: 'برای کانال خصوصی باید لینک دعوت را هم وارد کنید.' });
+          return;
+        }
+        cleanedChannels.push({
+          id: String((rawChannel as any).id ?? '').trim() || `chan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          chatId,
+          title: String((rawChannel as any).title ?? '').trim().slice(0, 120) || undefined,
+          inviteLink: inviteLink.slice(0, 300) || undefined,
+          enabled: (rawChannel as any).enabled !== false,
+        });
+      }
+      (updates as any).requiredChannels = cleanedChannels;
     }
 
     // Sanitize admin-customized bot texts: only known message keys and
@@ -3967,6 +4006,86 @@ async function startServer() {
   }
 
   // Send the exact same welcome text + main menu keyboard that /start shows.
+  /** Channels the customer must join, ignoring incomplete or disabled rows. */
+  function getActiveRequiredChannels(): RequiredChannel[] {
+    if (!botSettings.requiredChannelsEnabled) return [];
+    return (botSettings.requiredChannels || []).filter((channel) => channel && channel.enabled !== false && String(channel.chatId || '').trim());
+  }
+
+  /**
+   * Channels the customer has NOT joined yet.
+   *
+   * A channel the bot cannot inspect (not an admin there, wrong id) must never
+   * lock the customer out, so an errored check counts as "joined". Telegram
+   * reports a member as one of creator/administrator/member/restricted; only
+   * "left" and "kicked" mean the user is outside the channel.
+   */
+  async function getMissingRequiredChannels(token: string, userId: string): Promise<RequiredChannel[]> {
+    const channels = getActiveRequiredChannels();
+    if (channels.length === 0) return [];
+    const joinedStatuses = new Set(['creator', 'administrator', 'member', 'restricted']);
+    const missing: RequiredChannel[] = [];
+    for (const channel of channels) {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/getChatMember`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: channel.chatId, user_id: Number(userId) }),
+        });
+        const data = (await res.json().catch(() => ({}))) as any;
+        if (!data?.ok) {
+          console.warn(`[requiredChannels] Skipping ${channel.chatId}: ${data?.description || 'unreadable'}`);
+          continue;
+        }
+        if (!joinedStatuses.has(String(data.result?.status || ''))) missing.push(channel);
+      } catch (err) {
+        console.error(`[requiredChannels] getChatMember failed for ${channel.chatId}:`, err);
+      }
+    }
+    return missing;
+  }
+
+  function requiredChannelLink(channel: RequiredChannel): string {
+    if (channel.inviteLink) return channel.inviteLink;
+    const chatId = String(channel.chatId || '');
+    return chatId.startsWith('@') ? `https://t.me/${chatId.slice(1)}` : chatId;
+  }
+
+  async function sendRequiredChannelsPrompt(token: string, chatId: string, missing: RequiredChannel[]) {
+    const list = missing
+      .map((channel, index) => `${index + 1}. ${escapeTelegramHtml(channel.title || channel.chatId)}`)
+      .join('\n');
+    const buttons = missing.map((channel) => ([{
+      text: `📢 عضویت در ${(channel.title || channel.chatId).slice(0, 40)}`,
+      url: requiredChannelLink(channel),
+    }]));
+    buttons.push([{ text: '✅ عضو شدم، بررسی کن', callback_data: 'check_required_channels' } as any]);
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        parse_mode: 'HTML',
+        text: `🔒 <b>برای استفاده از ربات، ابتدا در کانال‌های زیر عضو شوید:</b>\n\n${list}\n\nپس از عضویت، دکمهٔ «عضو شدم، بررسی کن» را بزنید.`,
+        reply_markup: { inline_keyboard: buttons },
+      }),
+    });
+  }
+
+  /**
+   * True when the customer was stopped at the gate.
+   * Admins are exempt so a misconfigured channel can always be fixed from the bot.
+   */
+  async function blockedByRequiredChannels(token: string, chatId: string, userId: string): Promise<boolean> {
+    if (getActiveRequiredChannels().length === 0) return false;
+    if (isTelegramAdmin(String(userId))) return false;
+    const missing = await getMissingRequiredChannels(token, userId);
+    if (missing.length === 0) return false;
+    await sendRequiredChannelsPrompt(token, chatId, missing);
+    return true;
+  }
+
   // Used both for /start and for every "back to main menu" button, so the
   // customer always sees the same main menu (no stray cake photo / store name).
   async function sendBotMainMenu(token: string, chatId: string, from: any) {
@@ -4156,6 +4275,10 @@ async function startServer() {
             `👤 <b>عضویت مشتری جدید در ربات:</b>\n\n👤 نام اکانت: <b>${escapeTelegramHtml(startProfile || 'کاربر بدون نام')}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n${msg.from?.username ? `💬 یوزرنیم: @${msg.from.username}\n` : ''}📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
           );
         }
+
+        // Forced-join gate: the main menu is withheld until every required
+        // channel has been joined.
+        if (await blockedByRequiredChannels(token, chatId, String(msg.from?.id ?? chatId))) return;
 
         await sendBotMainMenu(token, chatId, msg.from);
       } else if (text === '/admin') {
@@ -4776,6 +4899,26 @@ async function startServer() {
         });
         return;
       }
+
+      // Re-check membership on demand, then release the customer into the bot.
+      if (data === 'check_required_channels') {
+        const stillMissing = await getMissingRequiredChannels(token, callbackActorId);
+        if (stillMissing.length > 0) {
+          await sendRequiredChannelsPrompt(token, chatId, stillMissing);
+          return;
+        }
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: '✅ <b>عضویت شما تأیید شد. خوش آمدید!</b>', parse_mode: 'HTML' }),
+        });
+        await sendBotMainMenu(token, chatId, cb.from);
+        return;
+      }
+
+      // The gate guards every customer action, not just /start: otherwise a
+      // stale keyboard from before the gate was enabled would still work.
+      if (cb.message?.chat?.type === 'private' && await blockedByRequiredChannels(token, chatId, callbackActorId)) return;
 
       // A payment callback is valid only in the private chat of the exact bot
       // user selected by the administrator.

@@ -27,9 +27,12 @@ import {
   Key,
   Copy,
   Eye,
-  EyeOff
+  EyeOff,
+  Radio,
+  Plus,
+  Trash2
 } from 'lucide-react';
-import { BotSettings, ForumTopicConfig } from '../types';
+import { BotSettings, ForumTopicConfig, RequiredChannel } from '../types';
 import { INITIAL_FORUM_TOPICS } from '../data/initialData';
 import { formatPrice } from '../utils/formatters';
 
@@ -89,6 +92,33 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
       setClearTelegramBotToken(false);
     }
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const requiredChannels: RequiredChannel[] = formData.requiredChannels || [];
+
+  const updateRequiredChannels = (next: RequiredChannel[]) => {
+    handleInputChange('requiredChannels', next);
+  };
+
+  const addRequiredChannel = () => {
+    updateRequiredChannels([
+      ...requiredChannels,
+      {
+        id: `chan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        chatId: '',
+        title: '',
+        inviteLink: '',
+        enabled: true,
+      },
+    ]);
+  };
+
+  const patchRequiredChannel = (id: string, patch: Partial<RequiredChannel>) => {
+    updateRequiredChannels(requiredChannels.map((channel) => (channel.id === id ? { ...channel, ...patch } : channel)));
+  };
+
+  const removeRequiredChannel = (id: string) => {
+    updateRequiredChannels(requiredChannels.filter((channel) => channel.id !== id));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -732,6 +762,136 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
         </div>
 
         {/* Shipping & Delivery Settings */}
+        {/* Forced channel membership */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center">
+                <Radio className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">عضویت اجباری در کانال</h3>
+                <p className="text-xs text-slate-400">مشتری تا عضو کانال‌های زیر نشود نمی‌تواند از ربات استفاده کند</p>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center gap-2.5 cursor-pointer shrink-0">
+              <span className={`text-xs font-semibold ${formData.requiredChannelsEnabled ? 'text-sky-300' : 'text-slate-400'}`}>
+                {formData.requiredChannelsEnabled ? 'فعال' : 'غیرفعال'}
+              </span>
+              <span className="relative inline-flex">
+                <input
+                  type="checkbox"
+                  checked={Boolean(formData.requiredChannelsEnabled)}
+                  onChange={(event) => handleInputChange('requiredChannelsEnabled', event.target.checked)}
+                  className="sr-only peer"
+                />
+                <span className="w-11 h-6 bg-slate-700 rounded-full peer-checked:bg-sky-500 transition-colors" />
+                <span className="absolute top-0.5 right-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:-translate-x-5" />
+              </span>
+            </label>
+          </div>
+
+          {!formData.requiredChannelsEnabled && (
+            <div className="p-3.5 rounded-2xl border border-slate-700 bg-slate-800/50 text-xs text-slate-300 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-slate-400" />
+              این قابلیت خاموش است؛ همهٔ مشتریان بدون محدودیت به ربات دسترسی دارند.
+            </div>
+          )}
+
+          {formData.requiredChannelsEnabled && (
+            <>
+              <div className="p-3.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-200 leading-relaxed">
+                ⚠️ ربات باید <b>ادمین</b> کانال باشد تا بتواند عضویت را بررسی کند. در غیر این صورت آن کانال نادیده گرفته می‌شود.
+                برای کانال عمومی یوزرنیم (مثل <span className="font-mono">@mychannel</span>) و برای کانال خصوصی شناسه عددی
+                (مثل <span className="font-mono">-1001234567890</span>) به همراه لینک دعوت وارد کنید.
+              </div>
+
+              <div className="space-y-3">
+                {requiredChannels.length === 0 && (
+                  <p className="text-xs text-slate-400 text-center py-4">هنوز کانالی اضافه نشده است.</p>
+                )}
+
+                {requiredChannels.map((channel, index) => (
+                  <div key={channel.id} className="bg-slate-800/60 border border-slate-700 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-bold text-slate-300">کانال {index + 1}</span>
+                      <div className="flex items-center gap-3">
+                        <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={channel.enabled !== false}
+                            onChange={(event) => patchRequiredChannel(channel.id, { enabled: event.target.checked })}
+                            className="rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500"
+                          />
+                          فعال
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeRequiredChannel(channel.id)}
+                          className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15 transition-colors"
+                          title="حذف کانال"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">شناسه کانال *</label>
+                        <input
+                          type="text"
+                          dir="ltr"
+                          value={channel.chatId}
+                          onChange={(event) => patchRequiredChannel(channel.id, { chatId: event.target.value })}
+                          placeholder="@mychannel"
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500 font-mono text-left"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">نام نمایشی</label>
+                        <input
+                          type="text"
+                          value={channel.title || ''}
+                          onChange={(event) => patchRequiredChannel(channel.id, { title: event.target.value })}
+                          placeholder="کانال اطلاع‌رسانی شیرینی"
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                        لینک دعوت {channel.chatId.trim().startsWith('-') && <span className="text-rose-400">(برای کانال خصوصی الزامی است)</span>}
+                      </label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={channel.inviteLink || ''}
+                        onChange={(event) => patchRequiredChannel(channel.id, { inviteLink: event.target.value })}
+                        placeholder="https://t.me/+AbCdEf..."
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500 font-mono text-left"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {requiredChannels.length < 10 && (
+                <button
+                  type="button"
+                  onClick={addRequiredChannel}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-slate-600 text-xs font-semibold text-slate-300 hover:border-sky-500 hover:text-sky-300 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  افزودن کانال
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg space-y-4">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
             <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">

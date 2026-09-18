@@ -116,6 +116,18 @@ export interface ForumTopicConfig {
   lastReportSummary?: string;
 }
 
+/** A channel or group the customer must join before using the bot. */
+export interface RequiredChannel {
+  id: string;
+  /** Public @username, or a numeric -100… id for a private channel. */
+  chatId: string;
+  /** Shown on the join button; falls back to the chatId. */
+  title?: string;
+  /** Optional invite link, required for a private channel the user cannot resolve by username. */
+  inviteLink?: string;
+  enabled: boolean;
+}
+
 export interface BotSettings {
   botName: string;
   botUsername: string;
@@ -148,6 +160,9 @@ export interface BotSettings {
   forumGroupTitle?: string;
   forumAutoCreateTopics?: boolean;
   forumTopics?: ForumTopicConfig[];
+  /** Master switch for the forced-join gate; when false the bot never checks membership. */
+  requiredChannelsEnabled?: boolean;
+  requiredChannels?: RequiredChannel[];
   webAdminUrl?: string;
   webAdminUsername?: string;
   webAdminPassword?: string;

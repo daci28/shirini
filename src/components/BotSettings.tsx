@@ -180,7 +180,10 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
       alert('تنظیمات ربات قنادی با موفقیت ذخیره شد.');
     } catch (err) {
       console.error(err);
-      alert('ذخیره تنظیمات ناموفق بود. لطفاً دوباره تلاش کنید.');
+      // Surface the server's reason (e.g. an invalid required-channel id),
+      // otherwise a rejected save looks like the deployment is broken.
+      const reason = err instanceof Error && err.message ? err.message : '';
+      alert(reason ? `ذخیره تنظیمات ناموفق بود:\n\n${reason}` : 'ذخیره تنظیمات ناموفق بود. لطفاً دوباره تلاش کنید.');
     } finally {
       setIsSaving(false);
     }

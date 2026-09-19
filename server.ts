@@ -4109,7 +4109,16 @@ async function startServer() {
     return chatId.startsWith('@') ? `https://t.me/${chatId.slice(1)}` : chatId;
   }
 
-  async function sendRequiredChannelsPrompt(token: string, chatId: string, missing: RequiredChannel[]) {
+  /**
+   * @param retry true when the customer already pressed "I joined" and is still
+   * not a member, so the bot must say that plainly instead of repeating itself.
+   */
+  async function sendRequiredChannelsPrompt(
+    token: string,
+    chatId: string,
+    missing: RequiredChannel[],
+    retry = false,
+  ) {
     const list = missing
       .map((channel, index) => `${index + 1}. ${escapeTelegramHtml(channel.title || channel.chatId)}`)
       .join('\n');
@@ -4117,7 +4126,15 @@ async function startServer() {
       text: `📢 عضویت در ${(channel.title || channel.chatId).slice(0, 40)}`,
       url: requiredChannelLink(channel),
     }]));
-    buttons.push([{ text: '✅ عضو شدم، بررسی کن', callback_data: 'check_required_channels' } as any]);
+    buttons.push([{
+      text: retry ? '🔄 بررسی دوباره' : '✅ عضو شدم، بررسی کن',
+      callback_data: 'check_required_channels',
+    } as any]);
+
+    const text = tmsg(
+      retry ? 'requiredChannelsStillMissingMessage' : 'requiredChannelsPromptMessage',
+      { channelList: list, storeName: botSettings.storeName || '' },
+    );
 
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
@@ -4125,7 +4142,7 @@ async function startServer() {
       body: JSON.stringify({
         chat_id: chatId,
         parse_mode: 'HTML',
-        text: `🔒 <b>برای استفاده از ربات، ابتدا در کانال‌های زیر عضو شوید:</b>\n\n${list}\n\nپس از عضویت، دکمهٔ «عضو شدم، بررسی کن» را بزنید.`,
+        text,
         reply_markup: { inline_keyboard: buttons },
       }),
     });
@@ -4962,13 +4979,19 @@ async function startServer() {
       if (data === 'check_required_channels') {
         const stillMissing = await getMissingRequiredChannels(token, callbackActorId);
         if (stillMissing.length > 0) {
-          await sendRequiredChannelsPrompt(token, chatId, stillMissing);
+          // Pressing the button again must not repeat the same message, or the
+          // customer cannot tell the check actually ran.
+          await sendRequiredChannelsPrompt(token, chatId, stillMissing, true);
           return;
         }
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: '✅ <b>عضویت شما تأیید شد. خوش آمدید!</b>', parse_mode: 'HTML' }),
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: tmsg('requiredChannelsPassedMessage', { storeName: botSettings.storeName || '' }),
+            parse_mode: 'HTML',
+          }),
         });
         await sendBotMainMenu(token, chatId, cb.from);
         return;

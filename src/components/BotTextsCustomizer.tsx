@@ -8,6 +8,7 @@ import {
   ShoppingBag,
   CreditCard,
   Headphones,
+  Radio,
   Cake,
   Wand2,
   CheckCircle2,
@@ -37,6 +38,7 @@ const groupIcons: Record<string, React.ReactNode> = {
   CreditCard: <CreditCard className="w-4 h-4" />,
   Cake: <Cake className="w-4 h-4" />,
   Headphones: <Headphones className="w-4 h-4" />,
+  Radio: <Radio className="w-4 h-4" />,
 };
 
 const sampleVars: Record<string, string> = {
@@ -55,6 +57,7 @@ const sampleVars: Record<string, string> = {
   prepaymentAmount: '۱٬۰۰۰٬۰۰۰',
   ticketNumber: 'TK-4821',
   reason: '',
+  channelList: '1. کانال اطلاع‌رسانی\n2. کانال تخفیف‌ها',
 };
 
 /** Tone-based suggested alternative for each message, shown as a one-click preset. */

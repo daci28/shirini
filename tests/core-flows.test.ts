@@ -1175,6 +1175,66 @@ async function testRequiredChannelJoinGate() {
   console.log('✅ required channel join gate blocks, re-checks, fails open and can be switched off');
 }
 
+/**
+ * Pressing "I joined" while still not a member must produce a DIFFERENT
+ * message, otherwise the customer cannot tell the check actually ran. All
+ * three gate messages must also be editable from the panel.
+ */
+async function testRequiredChannelMessagesAreDistinctAndCustomizable() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const messagesSource = fs.readFileSync(new URL('../src/data/botMessages.ts', import.meta.url), 'utf8');
+
+  for (const key of [
+    'requiredChannelsPromptMessage',
+    'requiredChannelsStillMissingMessage',
+    'requiredChannelsPassedMessage',
+  ]) {
+    assert.ok(messagesSource.includes(`'${key}'`), `${key} must be a registered, editable bot message`);
+    assert.ok(serverSource.includes(key), `${key} must actually be used by the bot`);
+  }
+
+  // The retry path must select the "still missing" text, not repeat the first one.
+  assert.ok(
+    /retry \? 'requiredChannelsStillMissingMessage' : 'requiredChannelsPromptMessage'/.test(serverSource),
+    'the retry must switch to a different message than the first prompt'
+  );
+  assert.ok(
+    /sendRequiredChannelsPrompt\(token, chatId, stillMissing, true\)/.test(serverSource),
+    'the "I joined" callback must pass retry=true when the customer is still not a member'
+  );
+  // The very first prompt must NOT be the retry variant.
+  assert.ok(
+    /await sendRequiredChannelsPrompt\(token, chatId, missing\);/.test(serverSource),
+    'the first prompt must be sent without the retry flag'
+  );
+
+  // The two texts must genuinely differ, so the customer sees a change.
+  const defaults: Record<string, string> = {};
+  for (const key of ['requiredChannelsPromptMessage', 'requiredChannelsStillMissingMessage']) {
+    const match = messagesSource.match(new RegExp(`${key}:[\\s\\S]*?defaultText:\\s*\n?\\s*'((?:[^'\\\\]|\\\\.)*)'`));
+    assert.ok(match, `${key} needs a default text`);
+    defaults[key] = match[1];
+  }
+  assert.notStrictEqual(
+    defaults.requiredChannelsPromptMessage,
+    defaults.requiredChannelsStillMissingMessage,
+    'the retry message must not be identical to the first prompt'
+  );
+
+  // Both list the outstanding channels.
+  for (const key of ['requiredChannelsPromptMessage', 'requiredChannelsStillMissingMessage']) {
+    assert.ok(defaults[key].includes('{channelList}'), `${key} must show which channels are missing`);
+  }
+
+  // The panel groups them so an admin can find them.
+  assert.ok(
+    /key: 'channels',[\s\S]*?requiredChannelsPromptMessage/.test(messagesSource),
+    'the gate messages need their own group in the text customizer'
+  );
+
+  console.log('✅ join-gate messages are distinct on retry and editable from the panel');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1186,6 +1246,7 @@ async function main() {
   await testInvoicePaymentLifecycleReportsToFinanceTopic();
   await testMultiPhotoReportsAreSentAsAlbums();
   await testRequiredChannelJoinGate();
+  await testRequiredChannelMessagesAreDistinctAndCustomizable();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

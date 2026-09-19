@@ -37,7 +37,10 @@ export type BotMessageKey =
   | 'supportPromptMessage'
   | 'ticketCreatedMessage'
   | 'genericErrorMessage'
-  | 'adminOnlyMessage';
+  | 'adminOnlyMessage'
+  | 'requiredChannelsPromptMessage'
+  | 'requiredChannelsStillMissingMessage'
+  | 'requiredChannelsPassedMessage';
 
 export interface BotMessageDefinition {
   key: BotMessageKey;
@@ -286,6 +289,35 @@ export const BOT_MESSAGES: Record<BotMessageKey, BotMessageDefinition> = {
     variables: [],
     defaultText: '⛔️ شما اجازه انجام این عملیات را ندارید.',
   },
+  requiredChannelsPromptMessage: {
+    key: 'requiredChannelsPromptMessage',
+    title: 'درخواست عضویت در کانال (بار اول)',
+    description: 'وقتی مشتری هنوز عضو کانال‌های اجباری نشده و برای اولین بار با این صفحه روبه‌رو می‌شود.',
+    variables: [
+      { name: '{channelList}', desc: 'فهرست شماره‌دار کانال‌هایی که باید عضو شود' },
+      { name: '{storeName}', desc: 'نام فروشگاه' },
+    ],
+    defaultText:
+      '🔒 <b>برای استفاده از ربات، ابتدا در کانال‌های زیر عضو شوید:</b>\n\n{channelList}\n\nپس از عضویت، دکمهٔ «عضو شدم، بررسی کن» را بزنید.',
+  },
+  requiredChannelsStillMissingMessage: {
+    key: 'requiredChannelsStillMissingMessage',
+    title: 'هنوز عضو نشده (بعد از بررسی مجدد)',
+    description: 'وقتی مشتری دکمهٔ «عضو شدم» را می‌زند ولی هنوز عضو همهٔ کانال‌ها نشده است.',
+    variables: [
+      { name: '{channelList}', desc: 'فهرست کانال‌هایی که هنوز عضو نشده' },
+      { name: '{storeName}', desc: 'نام فروشگاه' },
+    ],
+    defaultText:
+      '❌ <b>هنوز عضو نشده‌اید!</b>\n\nبررسی کردیم و عضویت شما در کانال‌های زیر تأیید نشد:\n\n{channelList}\n\nلطفاً روی دکمهٔ کانال بزنید، حتماً دکمهٔ «Join / عضو شدن» را لمس کنید و سپس دوباره «عضو شدم، بررسی کن» را بزنید.',
+  },
+  requiredChannelsPassedMessage: {
+    key: 'requiredChannelsPassedMessage',
+    title: 'تأیید عضویت',
+    description: 'وقتی عضویت مشتری در همهٔ کانال‌های اجباری تأیید می‌شود.',
+    variables: [{ name: '{storeName}', desc: 'نام فروشگاه' }],
+    defaultText: '✅ <b>عضویت شما تأیید شد. خوش آمدید!</b>',
+  },
 };
 
 export const BOT_MESSAGE_LIST: BotMessageDefinition[] = Object.values(BOT_MESSAGES);
@@ -377,5 +409,11 @@ export const BOT_MESSAGE_GROUPS: BotMessageGroup[] = [
     title: 'پشتیبانی',
     icon: 'Headphones',
     keys: ['supportPromptMessage', 'ticketCreatedMessage'],
+  },
+  {
+    key: 'channels',
+    title: 'عضویت اجباری',
+    icon: 'Radio',
+    keys: ['requiredChannelsPromptMessage', 'requiredChannelsStillMissingMessage', 'requiredChannelsPassedMessage'],
   },
 ];

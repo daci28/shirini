@@ -1364,6 +1364,32 @@ async function testCorruptedDataFileFallsBackToABackup() {
   console.log('✅ a corrupted data file is recovered from a rolling backup');
 }
 
+/**
+ * Tailwind v4 removed the `cursor: pointer` its v3 preflight applied to
+ * buttons, which left every control in the panel showing a plain arrow. The
+ * rule must stay in the stylesheet or the whole panel silently feels broken.
+ */
+async function testClickableControlsShowAHandCursor() {
+  const css = fs.readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
+
+  const pointerRule = css.match(/([^}]*)\{\s*cursor:\s*pointer;?\s*\}/);
+  assert.ok(pointerRule, 'the stylesheet must restore cursor:pointer for clickable controls');
+  const selectors = pointerRule[1];
+  for (const selector of ['button:not(:disabled)', '[role="button"]', 'summary', 'a[href]']) {
+    assert.ok(
+      selectors.includes(selector),
+      `${selector} must get a hand cursor, otherwise it does not feel clickable`
+    );
+  }
+
+  assert.ok(
+    /cursor:\s*not-allowed/.test(css),
+    'disabled controls must keep the not-allowed cursor instead of looking clickable'
+  );
+
+  console.log('✅ clickable panel controls show a hand cursor');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1378,6 +1404,7 @@ async function main() {
   await testRequiredChannelMessagesAreDistinctAndCustomizable();
   await testDataFileSurvivesACrashDuringWrite();
   await testCorruptedDataFileFallsBackToABackup();
+  await testClickableControlsShowAHandCursor();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

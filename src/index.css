@@ -15,6 +15,29 @@ input, button, select, textarea {
   font-family: inherit;
 }
 
+/*
+ * Tailwind v4 dropped the `cursor: pointer` that its v3 preflight used to put
+ * on buttons, so every control in the panel showed a plain arrow. Restore the
+ * hand cursor for anything clickable, and keep the "not-allowed" affordance on
+ * disabled controls.
+ */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label[for],
+summary,
+select:not(:disabled),
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+select:disabled,
+input:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

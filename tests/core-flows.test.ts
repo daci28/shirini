@@ -1235,6 +1235,135 @@ async function testRequiredChannelMessagesAreDistinctAndCustomizable() {
   console.log('✅ join-gate messages are distinct on retry and editable from the panel');
 }
 
+/**
+ * A shop must never lose its order and customer history.
+ *
+ * Writing the data file in place truncates it first, so a restart (Railway
+ * redeploy, pm2 restart, OOM kill) during a multi-megabyte write used to leave
+ * an unparseable file. This exercises the real thing: write a big payload in a
+ * child process, SIGKILL it mid-write, then load and verify nothing is lost.
+ */
+async function testDataFileSurvivesACrashDuringWrite() {
+  const os = await import('node:os');
+  const pathMod = await import('node:path');
+  const { spawn } = await import('node:child_process');
+
+  const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'shirini-persist-'));
+  const persistModule = new URL('../src/persistData.ts', import.meta.url).pathname;
+  const seedCustomers = [{ id: 'c1', name: 'مشتری قدیمی' }];
+
+  const writerFile = pathMod.join(dir, 'writer.mjs');
+  fs.writeFileSync(
+    writerFile,
+    [
+      `import { saveData } from ${JSON.stringify(persistModule)};`,
+      // Large enough that a write is always in flight when we kill it.
+      "const orders = Array.from({length: 120000}, (_, i) => ({ id: 'ord-' + i, receipt: 'x'.repeat(120) }));",
+      `const base = { products: [], customOrders: [], invoices: [], discounts: [], supportTickets: [], customers: ${JSON.stringify(seedCustomers)}, walletTransactions: [], backupSnapshots: [], backupSchedule: {} };`,
+      'saveData({ ...base, orders: [{ id: "ord-SEED" }] });',
+      'process.send && process.send("seeded");',
+      'while (true) { saveData({ ...base, orders }); }',
+    ].join('\n'),
+  );
+
+  const child = spawn(process.execPath, ['--import', 'tsx', writerFile], {
+    env: { ...process.env, DATA_DIR: dir },
+    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+  });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('writer did not seed in time')), 60000);
+      child.on('message', (m) => {
+        if (m === 'seeded') { clearTimeout(timer); resolve(); }
+      });
+      child.on('exit', () => { clearTimeout(timer); reject(new Error('writer exited early')); });
+    });
+
+    // Let a big write get under way, then kill it the way a host would.
+    await new Promise((r) => setTimeout(r, 2500));
+    child.kill('SIGKILL');
+    await new Promise((r) => setTimeout(r, 500));
+
+    const dataFile = pathMod.join(dir, 'data.json');
+    const raw = fs.readFileSync(dataFile, 'utf8');
+    let parsed: any;
+    assert.doesNotThrow(() => { parsed = JSON.parse(raw); },
+      'data.json must still be valid JSON after a crash mid-write');
+    assert.ok(Array.isArray(parsed.customers), 'the recovered file must keep its shape');
+    assert.ok(parsed.customers.length > 0, 'customer records must survive a crash');
+
+    // A restart must come back with real data, never an empty shop.
+    const previousDir = process.env.DATA_DIR;
+    process.env.DATA_DIR = dir;
+    try {
+      const mod = await import(`${persistModule}?crash=${Date.now()}`);
+      const loaded = mod.loadData();
+      assert.ok(loaded, 'loadData must recover something after a crash');
+      assert.ok(loaded.customers.length > 0, 'loadData must not return an empty customer list');
+    } finally {
+      if (previousDir === undefined) delete process.env.DATA_DIR;
+      else process.env.DATA_DIR = previousDir;
+    }
+  } finally {
+    if (!child.killed) child.kill('SIGKILL');
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  console.log('✅ data file survives a crash mid-write and reloads without data loss');
+}
+
+/** The corrupted-file fallback chain must be real, not just documented. */
+async function testCorruptedDataFileFallsBackToABackup() {
+  const os = await import('node:os');
+  const pathMod = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+
+  const dir = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'shirini-corrupt-'));
+  const persistModule = new URL('../src/persistData.ts', import.meta.url).pathname;
+
+  try {
+    // DATA_DIR is resolved once at import time, so this must run in its own
+    // process with the environment already pointing at the temp directory.
+    const script = pathMod.join(dir, 'check.mjs');
+    fs.writeFileSync(
+      script,
+      [
+        `import fs from 'node:fs';`,
+        `import path from 'node:path';`,
+        `import { saveData, loadData } from ${JSON.stringify(persistModule)};`,
+        `saveData({ products: [], orders: [{ id: 'ord-1' }], customOrders: [], invoices: [], discounts: [], supportTickets: [], customers: [{ id: 'c1', name: 'علی' }], walletTransactions: [], backupSnapshots: [], backupSchedule: {} });`,
+        `const dataFile = path.join(process.env.DATA_DIR, 'data.json');`,
+        // Truncate the live file the way an interrupted write would.
+        `fs.writeFileSync(dataFile, fs.readFileSync(dataFile, 'utf8').slice(0, 80));`,
+        `const recovered = loadData();`,
+        `console.log(JSON.stringify({ name: recovered?.customers?.[0]?.name ?? null, keptEvidence: fs.existsSync(path.join(process.env.DATA_DIR, 'data.corrupt.json')) }));`,
+      ].join('\n'),
+    );
+
+    const output = execFileSync(process.execPath, ['--import', 'tsx', script], {
+      env: { ...process.env, DATA_DIR: dir },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const result = JSON.parse(output.trim().split('\n').pop() as string);
+
+    assert.strictEqual(
+      result.name,
+      'علی',
+      'a corrupted data.json must fall back to a backup holding the real records, not an empty shop'
+    );
+    assert.ok(
+      result.keptEvidence,
+      'the damaged file must be preserved as data.corrupt.json instead of being silently overwritten'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  console.log('✅ a corrupted data file is recovered from a rolling backup');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1247,6 +1376,8 @@ async function main() {
   await testMultiPhotoReportsAreSentAsAlbums();
   await testRequiredChannelJoinGate();
   await testRequiredChannelMessagesAreDistinctAndCustomizable();
+  await testDataFileSurvivesACrashDuringWrite();
+  await testCorruptedDataFileFallsBackToABackup();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

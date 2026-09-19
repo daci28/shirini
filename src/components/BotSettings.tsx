@@ -121,6 +121,32 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
     updateRequiredChannels(requiredChannels.filter((channel) => channel.id !== id));
   };
 
+  const [channelCheck, setChannelCheck] = useState<{ chatId: string; ok: boolean; message: string }[] | null>(null);
+  const [isCheckingChannels, setIsCheckingChannels] = useState(false);
+
+  const verifyRequiredChannels = async () => {
+    setIsCheckingChannels(true);
+    setChannelCheck(null);
+    try {
+      const res = await fetch('/api/telegram/verify-channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ channels: requiredChannels.filter((c) => c.enabled !== false) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setChannelCheck([{ chatId: '', ok: false, message: data?.error || 'بررسی ناموفق بود.' }]);
+        return;
+      }
+      setChannelCheck(data.results || []);
+    } catch {
+      setChannelCheck([{ chatId: '', ok: false, message: 'ارتباط با سرور برقرار نشد.' }]);
+    } finally {
+      setIsCheckingChannels(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -877,6 +903,36 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
                   </div>
                 ))}
               </div>
+
+              {requiredChannels.length > 0 && (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={verifyRequiredChannels}
+                    disabled={isCheckingChannels}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-sky-500/15 border border-sky-500/30 text-xs font-bold text-sky-300 hover:bg-sky-500/25 transition-colors disabled:opacity-50"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    {isCheckingChannels ? 'در حال بررسی...' : 'بررسی دسترسی ربات به کانال‌ها'}
+                  </button>
+
+                  {channelCheck?.map((result, index) => (
+                    <div
+                      key={`${result.chatId}-${index}`}
+                      className={`p-3 rounded-2xl border text-[11px] flex items-start gap-2 ${
+                        result.ok
+                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                          : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                      }`}
+                    >
+                      {result.ok ? <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+                      <span>
+                        {result.chatId && <b className="font-mono">{result.chatId}</b>} {result.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {requiredChannels.length < 10 && (
                 <button

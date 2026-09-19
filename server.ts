@@ -259,6 +259,11 @@ function isTelegramAdmin(chatId: string): boolean {
   return configuredAdminIds.includes(String(chatId).trim());
 }
 
+/** A bot token starts with the bot's own numeric user id: "123456:ABC-...". */
+function botNumericIdFromToken(token: string): string {
+  return String(token || '').split(':')[0] || '0';
+}
+
 /** Prefer the Railway secret and never copy it into browser-visible settings. */
 function getTelegramBotToken(): string {
   return (process.env.TELEGRAM_BOT_TOKEN || botSettings.telegramBotToken || '').trim();
@@ -2574,6 +2579,59 @@ async function startServer() {
   });
 
   // Test a newly entered token, or the existing write-only server token.
+  /**
+   * Verify the bot can actually police each required channel.
+   *
+   * getChatMember only works where the bot is an administrator, so without
+   * this check a misconfigured channel silently lets every customer through.
+   */
+  app.post('/api/telegram/verify-channels', async (req: Request, res: Response) => {
+    const token = getTelegramBotToken();
+    if (!token) {
+      res.status(400).json({ error: 'ابتدا توکن ربات تلگرام را تنظیم کنید.' });
+      return;
+    }
+    const rawChannels = Array.isArray(req.body?.channels) ? req.body.channels : [];
+    const results: { chatId: string; ok: boolean; message: string }[] = [];
+
+    for (const raw of rawChannels.slice(0, 10)) {
+      let chatId = String(raw?.chatId ?? '').trim();
+      if (!chatId) continue;
+      const linkMatch = chatId.match(/^https?:\/\/t\.me\/(?:s\/)?([^/?#]+)/i);
+      if (linkMatch) chatId = linkMatch[1];
+      if (!/^-?\d+$/.test(chatId) && !chatId.startsWith('@')) chatId = `@${chatId}`;
+
+      try {
+        const meRes = await fetch(`https://api.telegram.org/bot${token}/getChatMember`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, user_id: Number(botNumericIdFromToken(token)) }),
+        });
+        const meData = (await meRes.json().catch(() => ({}))) as any;
+        if (!meData?.ok) {
+          results.push({
+            chatId,
+            ok: false,
+            message: meData?.description?.includes('not found')
+              ? 'کانال پیدا نشد. یوزرنیم/شناسه را بررسی کنید و مطمئن شوید ربات عضو و ادمین کانال است.'
+              : `ربات به این کانال دسترسی ندارد (${meData?.description || 'خطای نامشخص'}).`,
+          });
+          continue;
+        }
+        const status = String(meData.result?.status || '');
+        if (status !== 'administrator' && status !== 'creator') {
+          results.push({ chatId, ok: false, message: 'ربات در این کانال ادمین نیست، بنابراین نمی‌تواند عضویت را بررسی کند.' });
+          continue;
+        }
+        results.push({ chatId, ok: true, message: 'ربات ادمین این کانال است و عضویت بررسی می‌شود.' });
+      } catch (err: any) {
+        results.push({ chatId, ok: false, message: `خطا در بررسی: ${err?.message || 'ناشناخته'}` });
+      }
+    }
+
+    res.json({ results });
+  });
+
   app.post('/api/telegram/test-bot', async (req: Request, res: Response) => {
     const requestedToken = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const token = requestedToken || getTelegramBotToken();

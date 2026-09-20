@@ -560,12 +560,14 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-20-customer-targeting';
+const APP_REVISION = '2026-09-20-broadcast-in-tickets';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
   'customer-tags',
   'legacy-no-discount-callback',
+  'broadcast-in-support-tab',
+  'replyable-broadcast',
 ];
 
 const registeredTelegramChatIds = new Set<string>();
@@ -2730,15 +2732,53 @@ async function startServer() {
     }
 
     const text = String(message).trim();
+    // When the admin wants replies, each recipient gets their own ticket so the
+    // answer lands in a real conversation thread instead of being lost.
+    const wantsReplies = req.body?.allowReplies !== false;
+    const subject = String(req.body?.subject || '').trim() || 'پیام از پشتیبانی';
     let sentCount = 0;
     const failures: { name: string; reason: string }[] = [];
+    const createdTicketIds: string[] = [];
 
     for (const customer of recipients) {
       try {
+        let ticket: SupportTicket | undefined;
+        if (wantsReplies) {
+          ticket = {
+            id: `tkt-bc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            ticketNumber: `TK-${Math.floor(1000 + Math.random() * 9000)}`,
+            customerName: customer.name,
+            customerTelegramId: String(customer.telegramId),
+            customerUsername: customer.username,
+            customerPhone: customer.phone || undefined,
+            category: 'general',
+            subject,
+            message: text,
+            status: 'answered',
+            priority: 'normal',
+            cakePhoto: photo || undefined,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            replies: [],
+          };
+          supportTickets.push(ticket);
+          createdTicketIds.push(ticket.id);
+        }
+
+        const replyMarkup = ticket
+          ? {
+              inline_keyboard: [
+                [{ text: '💬 پاسخ به این پیام', callback_data: `reply_ticket_${ticket.id}` }],
+                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }],
+              ],
+            }
+          : undefined;
+
         const endpoint = photo ? 'sendPhoto' : 'sendMessage';
-        const payload = photo
+        const payload: Record<string, unknown> = photo
           ? { chat_id: customer.telegramId, photo, caption: text, parse_mode: 'HTML' }
           : { chat_id: customer.telegramId, text, parse_mode: 'HTML' };
+        if (replyMarkup) payload.reply_markup = replyMarkup;
 
         const tgRes = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
           method: 'POST',
@@ -2752,6 +2792,12 @@ async function startServer() {
         if (body && body.ok) {
           sentCount++;
         } else {
+          // The message never arrived, so a ticket for it would be a thread the
+          // customer cannot see. Drop it again.
+          if (ticket) {
+            supportTickets = supportTickets.filter((t) => t.id !== ticket!.id);
+            createdTicketIds.pop();
+          }
           failures.push({ name: customer.name, reason: body?.description || 'خطای نامشخص' });
         }
       } catch (e: any) {
@@ -2787,6 +2833,7 @@ async function startServer() {
       sentCount,
       failedCount: failures.length,
       failures: failures.slice(0, 10),
+      createdTicketsCount: createdTicketIds.length,
     });
   });
 
@@ -4913,6 +4960,14 @@ async function startServer() {
             ticket.updatedAt = new Date().toISOString();
             saveAllData();
             userStates.delete(chatId);
+            sendToTelegramTopic(
+              'support',
+              `💬 <b>پاسخ جدید مشتری (تیکت ${ticket.ticketNumber})</b>\n\n` +
+                `👤 <b>مشتری:</b> ${escapeTelegramHtml(ticket.customerName)}\n` +
+                `📌 <b>موضوع:</b> ${escapeTelegramHtml(ticket.subject)}\n\n` +
+                `📝 <b>متن پاسخ:</b>\n<i>${escapeTelegramHtml(replyText)}</i>`,
+              photoFileId
+            );
             await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -5344,11 +5399,31 @@ async function startServer() {
       // support_finalize callback can be reported only when it really creates
       // a new ticket.
       const ticketIdsBeforeCallback = new Set(supportTickets.map(ticket => ticket.id));
+      // The handler clears the conversation state once the reply is stored, so
+      // remember which ticket was being answered before that happens.
+      const repliedTicketId = userStates.get(chatId)?.ticketId;
       const customerHandled = await handleCustomerCallback(tgCtx, data);
       if (customerHandled) {
         // Do not rely solely on the 10-second autosave on Railway: a deploy or
         // restart immediately after submission must not lose the ticket.
         saveAllData();
+
+        // A customer answering a ticket (including a broadcast they received)
+        // must reach the admin, otherwise the conversation dies silently.
+        if (data === 'reply_ticket_photo_no' || data === 'reply_ticket_photo_done') {
+          const repliedTicket = supportTickets.find((t) => t.id === repliedTicketId);
+          if (repliedTicket) {
+            const lastReply = repliedTicket.replies[repliedTicket.replies.length - 1];
+            await sendToTelegramTopic(
+              'support',
+              `💬 <b>پاسخ جدید مشتری (تیکت ${repliedTicket.ticketNumber})</b>\n\n` +
+                `👤 <b>مشتری:</b> ${escapeTelegramHtml(repliedTicket.customerName)}\n` +
+                `📌 <b>موضوع:</b> ${escapeTelegramHtml(repliedTicket.subject)}\n\n` +
+                `📝 <b>متن پاسخ:</b>\n<i>${escapeTelegramHtml(lastReply?.text || '')}</i>`,
+              lastReply?.photo
+            );
+          }
+        }
 
         if (data === 'support_finalize') {
           const createdTicket = supportTickets.find(ticket => !ticketIdsBeforeCallback.has(ticket.id));

@@ -1497,6 +1497,46 @@ async function testBroadcastAudienceTargeting() {
   console.log('✅ broadcast targeting reaches the chosen audience only');
 }
 
+/**
+ * A broadcast must be able to start a real conversation: each recipient gets
+ * their own ticket carrying a reply button, so the customer's answer lands in
+ * a thread the admin can see and answer back.
+ */
+async function testBroadcastCanStartAReplyableConversation() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  // The broadcast route must create a ticket per recipient and attach the same
+  // reply callback the ticket flow already understands.
+  const routeStart = serverSource.indexOf("app.post('/api/telegram/broadcast'");
+  assert.ok(routeStart > -1, 'the broadcast route must exist');
+  const route = serverSource.slice(routeStart, routeStart + 6000);
+
+  assert.ok(route.includes('supportTickets.push'), 'a broadcast must create a ticket per recipient');
+  assert.ok(
+    route.includes('reply_ticket_${ticket.id}'),
+    'the broadcast message must carry the reply button the ticket flow handles'
+  );
+  assert.ok(
+    route.includes("supportTickets = supportTickets.filter"),
+    'a ticket must not survive when the message failed to reach the customer'
+  );
+
+  // The customer's reply has to be reported, otherwise the thread dies unseen.
+  assert.ok(
+    serverSource.includes('پاسخ جدید مشتری'),
+    'a customer reply must be reported to the admin support topic'
+  );
+
+  // `reply_ticket_<id>` is what the bot sends; the handler must accept it.
+  const handlerSource = fs.readFileSync(new URL('../src/telegramHandlers.ts', import.meta.url), 'utf8');
+  assert.ok(
+    handlerSource.includes("data.startsWith('reply_ticket_')"),
+    'the bot must handle the reply button produced by a broadcast'
+  );
+
+  console.log('✅ broadcasts open a two-way conversation');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1514,6 +1554,7 @@ async function main() {
   await testClickableControlsShowAHandCursor();
   await testEveryRoutedCheckoutCallbackIsHandled();
   await testBroadcastAudienceTargeting();
+  await testBroadcastCanStartAReplyableConversation();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

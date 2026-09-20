@@ -18,12 +18,14 @@ import {
   ChevronLeft,
   Flame,
   Check,
-  Plus
+  Plus,
+  Megaphone
 } from 'lucide-react';
 import { SupportTicket, TicketStatus, SupportCategory, BotSettings, Order, CustomPastryOrder, CustomerUser } from '../types';
 import { resolveTelegramImageSource } from '../utils/telegramImage';
 import { matchesSearchValues } from '../utils/search';
 import { ZoomableImageModal } from './ZoomableImageModal';
+import { CustomerBroadcastPanel } from './CustomerBroadcastPanel';
 
 interface SupportManagerProps {
   tickets: SupportTicket[];
@@ -109,6 +111,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
   const [replyInput, setReplyInput] = useState<string>('');
   const [isSendingReply, setIsSendingReply] = useState<boolean>(false);
   const [showNewTicketModal, setShowNewTicketModal] = useState<boolean>(false);
+  const [showBroadcast, setShowBroadcast] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // New ticket form state
@@ -353,15 +356,36 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowNewTicketModal(true)}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/25 transition-all flex items-center justify-center gap-2 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>ثبت تیکت / پیام جدید</span>
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setShowBroadcast((v) => !v)}
+              className={`w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2 ${
+                showBroadcast
+                  ? 'bg-pink-600 hover:bg-pink-500 text-white shadow-pink-600/25'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+              }`}
+            >
+              <Megaphone className="w-4 h-4" />
+              <span>{showBroadcast ? 'بستن پیام گروهی' : 'ارسال پیام گروهی'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowNewTicketModal(true)}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/25 transition-all flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>ثبت تیکت / پیام جدید</span>
+            </button>
+          </div>
         </div>
+
+        {showBroadcast && (
+          <div className="mt-5">
+            <CustomerBroadcastPanel customers={customers} />
+          </div>
+        )}
 
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-slate-800/80">
@@ -743,7 +767,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
                   {/* Makes a stale deployment obvious at a glance. */}
                   <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
-                    v2026-09-20-customer-targeting
+                    v2026-09-20-broadcast-in-tickets
                   </p>
                 </div>
               </div>

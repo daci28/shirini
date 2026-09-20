@@ -553,6 +553,21 @@ if (hydrateLegacyTicketCustomers()) {
 let isPolling = false;
 let pollingOffset = 0;
 let pollingInterval: NodeJS.Timeout | null = null;
+/**
+ * Human-readable marker of what this build contains.
+ *
+ * Deployments have silently served a months-old commit before; checking
+ * /api/health against this list is the fastest way to prove whether the code
+ * running in production is the code that was pushed.
+ */
+const APP_REVISION = '2026-09-20-customer-targeting';
+const APP_FEATURES = [
+  'ticket-customer-picker',
+  'targeted-broadcast',
+  'customer-tags',
+  'legacy-no-discount-callback',
+];
+
 const registeredTelegramChatIds = new Set<string>();
 
 // Per-user cart sessions (chatId -> cart items)
@@ -581,6 +596,10 @@ async function startServer() {
       status: 'ok',
       timestamp: new Date().toISOString(),
       build: 'admin-manager-v8-topics',
+      // Bumped by hand whenever a user-visible change ships, so anyone can tell
+      // from /api/health whether the running deployment actually contains it.
+      appRevision: APP_REVISION,
+      features: APP_FEATURES,
       instanceId: INSTANCE_ID,
       botPolling: isPolling,
       hasBotToken: Boolean(getTelegramBotToken()),

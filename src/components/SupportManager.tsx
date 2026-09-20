@@ -739,7 +739,13 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                 <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300">
                   <Plus className="w-5 h-5" />
                 </div>
-                <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
+                <div>
+                  <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
+                  {/* Makes a stale deployment obvious at a glance. */}
+                  <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
+                    v2026-09-20-customer-targeting
+                  </p>
+                </div>
               </div>
               <button
                 type="button"

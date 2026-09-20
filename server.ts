@@ -317,6 +317,34 @@ if (persistedData) {
   backupSnapshots = (persistedData.backupSnapshots || backupSnapshots).map(redactBackupSnapshot);
   backupSchedule = persistedData.backupSchedule || backupSchedule;
   broadcasts = persistedData.broadcasts || broadcasts;
+
+  // Repair tickets saved before the opening message was mirrored into
+  // `replies[0]`. The panel shows `message` as the first bubble and renders
+  // `replies.slice(1)`, so a ticket with an empty `replies` list swallowed the
+  // customer's first answer and credited the opening message to the customer.
+  let repairedTickets = 0;
+  for (const ticket of supportTickets) {
+    if (!Array.isArray(ticket.replies)) ticket.replies = [];
+    const openedByAdmin = ticket.id.startsWith('tkt-bc-');
+    const firstReply = ticket.replies[0];
+    const mirrorsOpeningMessage =
+      firstReply && firstReply.text === ticket.message &&
+      firstReply.sender === (openedByAdmin ? 'admin' : 'customer');
+    if (mirrorsOpeningMessage) continue;
+
+    ticket.replies.unshift({
+      id: `rep-repair-${ticket.id}`,
+      sender: openedByAdmin ? 'admin' : 'customer',
+      senderName: openedByAdmin ? 'مدیریت قنادی' : ticket.customerName || 'مشتری',
+      text: ticket.message || '',
+      photo: ticket.cakePhoto || undefined,
+      createdAt: ticket.createdAt,
+    });
+    repairedTickets++;
+  }
+  if (repairedTickets > 0) {
+    console.log(`[startup] repaired ${repairedTickets} ticket(s) whose first reply was hidden in the panel`);
+  }
   console.log("Loaded persisted data");
 }
 
@@ -560,7 +588,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-20-rename-broadcast-button';
+const APP_REVISION = '2026-09-20-fix-ticket-thread';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -2770,7 +2798,19 @@ async function startServer() {
             cakePhoto: photo || undefined,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            replies: [],
+            // The panel renders the opening message from `message` and the rest
+            // from `replies.slice(1)`, so `replies[0]` must mirror the opening
+            // message. Here that message is from the admin, not the customer.
+            replies: [
+              {
+                id: `rep-${Date.now()}`,
+                sender: 'admin',
+                senderName: 'مدیریت قنادی',
+                text: text,
+                photo: photo || undefined,
+                createdAt: new Date().toISOString(),
+              },
+            ],
           };
           supportTickets.push(ticket);
           createdTicketIds.push(ticket.id);

@@ -311,10 +311,12 @@ function testProductsAndOrdersUseNarrowViewportSafeLayouts() {
 
 function testCustomerImagePanelsUseSharedZoomViewer() {
   const supportManagerSource = fs.readFileSync(new URL('../src/components/SupportManager.tsx', import.meta.url), 'utf8');
-  const initialBubbleIndex = supportManagerSource.indexOf('Initial customer message');
+  // Anchored on the rendered message rather than a comment, so rewording the
+  // surrounding code cannot silently disable this check.
+  const initialBubbleIndex = supportManagerSource.indexOf('selectedTicket.message &&');
   const initialPhotoIndex = supportManagerSource.indexOf('selectedTicket.cakePhoto');
-  assert.ok(initialBubbleIndex >= 0, 'The initial customer message bubble should exist.');
-  assert.ok(initialPhotoIndex > initialBubbleIndex, 'The first ticket image must stay inside the initial customer message bubble.');
+  assert.ok(initialBubbleIndex >= 0, 'The opening message bubble should exist.');
+  assert.ok(initialPhotoIndex > initialBubbleIndex, 'The first ticket image must stay inside the opening message bubble.');
   assert.match(supportManagerSource, /<TicketImageAttachment/);
   assert.match(supportManagerSource, /<ZoomableImageModal/);
   assert.doesNotMatch(supportManagerSource, /تصویر طرح کیک/);
@@ -1537,6 +1539,52 @@ async function testBroadcastCanStartAReplyableConversation() {
   console.log('✅ broadcasts open a two-way conversation');
 }
 
+/**
+ * The panel renders a ticket's opening message from `message` and the rest of
+ * the thread from `replies.slice(1)`. So `replies[0]` must always mirror the
+ * opening message, and carry the sender who actually wrote it.
+ *
+ * A broadcast ticket opened with an empty `replies` list broke both halves:
+ * the shop's own message was drawn as if the customer had sent it, and the
+ * customer's first answer became `replies[0]` and was sliced away — their
+ * reply simply never appeared in the panel.
+ */
+async function testTicketThreadKeepsEveryMessageAndItsRealSender() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const panelSource = fs.readFileSync(new URL('../src/components/SupportManager.tsx', import.meta.url), 'utf8');
+
+  // The panel still slices, so the invariant below is the thing that matters.
+  assert.ok(
+    panelSource.includes('replies.slice(1)'),
+    'the panel renders the opening message separately from the rest of the thread'
+  );
+
+  const routeStart = serverSource.indexOf("app.post('/api/telegram/broadcast'");
+  const route = serverSource.slice(routeStart, routeStart + 6000);
+  assert.ok(
+    /replies:\s*\[\s*\{/.test(route),
+    'a broadcast ticket must seed replies[0] instead of starting empty, or the first customer answer is hidden'
+  );
+  assert.ok(
+    /sender:\s*'admin'/.test(route),
+    "a message the shop sent must be recorded as the admin's, not the customer's"
+  );
+
+  // Older tickets already on disk are repaired at startup.
+  assert.ok(
+    serverSource.includes('repaired') && serverSource.includes('ticket.replies.unshift'),
+    'tickets saved before the fix must be repaired so the hidden reply reappears'
+  );
+
+  // The opening bubble must be attributed to whoever actually opened it.
+  assert.ok(
+    panelSource.includes("opener?.sender === 'admin'"),
+    'the opening bubble must not be hard-coded to the customer'
+  );
+
+  console.log('✅ ticket threads show every message with its real sender');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1555,6 +1603,7 @@ async function main() {
   await testEveryRoutedCheckoutCallbackIsHandled();
   await testBroadcastAudienceTargeting();
   await testBroadcastCanStartAReplyableConversation();
+  await testTicketThreadKeepsEveryMessageAndItsRealSender();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

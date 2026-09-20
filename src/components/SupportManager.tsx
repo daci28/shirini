@@ -627,28 +627,52 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
               {/* Chat Thread Messages */}
               <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/30 scrollbar-thin">
                 
-                {/* Initial customer message: any attached photo stays inside the
-                    same message bubble as its text, just like later replies. */}
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center font-bold text-xs shrink-0">
-                    👤
-                  </div>
-                  <div className="max-w-[85%] bg-slate-800/90 text-slate-100 p-3.5 rounded-2xl rounded-tr-none text-xs leading-relaxed border border-slate-700/60 shadow">
-                    <div className="flex items-center justify-between gap-4 mb-1 text-[10px] text-slate-400">
-                      <span className="font-bold text-purple-300">{selectedTicket.customerName}</span>
-                      <span>{new Date(selectedTicket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
+                {/* Opening message. A ticket the shop started (a message sent to
+                    customers) opens with the admin's text, so it must not be
+                    attributed to the customer. */}
+                {(() => {
+                  const opener = selectedTicket.replies[0];
+                  const openedByAdmin = opener?.sender === 'admin';
+                  const openerName = openedByAdmin
+                    ? opener?.senderName || 'مدیریت قنادی'
+                    : selectedTicket.customerName;
+                  return (
+                    <div className={`flex items-start gap-3 ${openedByAdmin ? 'flex-row-reverse' : ''}`}>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                          openedByAdmin
+                            ? 'bg-purple-600/30 text-purple-200'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        {openedByAdmin ? '🍰' : '👤'}
+                      </div>
+                      <div
+                        className={`max-w-[85%] p-3.5 text-xs leading-relaxed border shadow rounded-2xl ${
+                          openedByAdmin
+                            ? 'bg-purple-600/20 text-purple-50 border-purple-500/40 rounded-tl-none'
+                            : 'bg-slate-800/90 text-slate-100 border-slate-700/60 rounded-tr-none'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-4 mb-1 text-[10px] text-slate-400">
+                          <span className={`font-bold ${openedByAdmin ? 'text-purple-200' : 'text-purple-300'}`}>
+                            {openerName}
+                          </span>
+                          <span>{new Date(selectedTicket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        {selectedTicket.message && <p className="whitespace-pre-line">{selectedTicket.message}</p>}
+                        {getTicketImageSource(selectedTicket.cakePhoto) && (
+                          <TicketImageAttachment
+                            imageSource={getTicketImageSource(selectedTicket.cakePhoto)!}
+                            sender={openedByAdmin ? 'admin' : 'customer'}
+                            senderName={openerName}
+                            onPreview={setPreviewImage}
+                          />
+                        )}
+                      </div>
                     </div>
-                    {selectedTicket.message && <p className="whitespace-pre-line">{selectedTicket.message}</p>}
-                    {getTicketImageSource(selectedTicket.cakePhoto) && (
-                      <TicketImageAttachment
-                        imageSource={getTicketImageSource(selectedTicket.cakePhoto)!}
-                        sender="customer"
-                        senderName={selectedTicket.customerName}
-                        onPreview={setPreviewImage}
-                      />
-                    )}
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Subsequent replies */}
                 {selectedTicket.replies.slice(1).map((reply) => {
@@ -767,7 +791,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
                   {/* Makes a stale deployment obvious at a glance. */}
                   <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
-                    v2026-09-20-rename-broadcast-button
+                    v2026-09-20-fix-ticket-thread
                   </p>
                 </div>
               </div>

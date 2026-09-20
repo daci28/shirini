@@ -192,6 +192,11 @@ export interface SupportTicketReply {
   text: string;
   /** Telegram file_id or an image URL sent with this reply. */
   photo?: string;
+  /**
+   * Every image sent with this reply. Customers can attach a whole album, so
+   * `photo` only ever holds the first one and is kept for older data.
+   */
+  photos?: string[];
   createdAt: string;
 }
 
@@ -209,6 +214,11 @@ export interface SupportTicket {
   priority: 'low' | 'normal' | 'high';
   orderNumber?: string;
   cakePhoto?: string;
+  /**
+   * Every image attached to the opening message. `cakePhoto` stays as the
+   * first one so tickets saved before albums were supported still render.
+   */
+  cakePhotos?: string[];
   createdAt: string;
   updatedAt: string;
   replies: SupportTicketReply[];

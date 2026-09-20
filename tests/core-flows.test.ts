@@ -134,9 +134,13 @@ async function testTicketDoesNotInventPhoneAndPhotoReplyKeepsFileIdContract() {
   const supportManagerSource = fs.readFileSync(new URL('../src/components/SupportManager.tsx', import.meta.url), 'utf8');
   const resolverSource = fs.readFileSync(new URL('../src/utils/telegramImage.ts', import.meta.url), 'utf8');
   assert.match(serverSource, /telegramUser:\s*cb\.from/);
-  assert.match(serverSource, /replyPhotoState[\s\S]{0,1200}photo:\s*photoFileId/);
+  // The raw Telegram file_id must be stored (never a generated absolute URL),
+  // and every photo of the set is kept rather than only the last one.
+  assert.match(serverSource, /replyPhotoState[\s\S]{0,1600}replyPhotoState\.photos\s*=/);
+  assert.match(serverSource, /replyPhotoState[\s\S]{0,1600}incomingImageFileId/);
   assert.doesNotMatch(serverSource, /savedPhotoUrl/);
-  assert.match(supportManagerSource, /reply\.photo \|\| getLegacyReplyImage\(reply\.text\)/);
+  // The panel still honours replies whose image lived in the text as Markdown.
+  assert.match(supportManagerSource, /reply\.photos,\s*\n\s*reply\.photo,\s*\n\s*getLegacyReplyImage\(reply\.text\),/);
   assert.match(resolverSource, /api\/telegram\/file\/\$\{encodeURIComponent\(normalizedReference\)\}/);
 }
 
@@ -1585,6 +1589,72 @@ async function testTicketThreadKeepsEveryMessageAndItsRealSender() {
   console.log('✅ ticket threads show every message with its real sender');
 }
 
+/**
+ * Customers routinely attach several pictures to one support message. Every
+ * collection point must keep the whole set instead of letting each new image
+ * overwrite the previous one, and the panel must render all of them.
+ */
+function testSupportMessagesKeepEveryAttachedPhoto() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const handlersSource = fs.readFileSync(new URL('../src/telegramHandlers.ts', import.meta.url), 'utf8');
+  const supportManagerSource = fs.readFileSync(
+    new URL('../src/components/SupportManager.tsx', import.meta.url),
+    'utf8',
+  );
+
+  const supportPhotoBlock = serverSource.slice(
+    serverSource.indexOf("supportPhotoState.mode === 'support_photo'"),
+  ).slice(0, 2000);
+  assert.ok(
+    supportPhotoBlock.includes('__albumFiles')
+      && /supportPhotoState\.photos\s*=\s*collected/.test(supportPhotoBlock),
+    'A new ticket must collect every photo, not overwrite the previous one.',
+  );
+
+  const replyPhotoBlock = serverSource.slice(
+    serverSource.indexOf("replyPhotoState.mode === 'reply_to_ticket_photo'"),
+  ).slice(0, 2200);
+  assert.ok(
+    replyPhotoBlock.includes('__albumFiles')
+      && /replyPhotoState\.photos\s*=\s*collected/.test(replyPhotoBlock),
+    'A ticket reply must collect every photo the customer sends.',
+  );
+  assert.ok(
+    !replyPhotoBlock.includes('ticket.replies.push('),
+    'The reply must be posted once the customer is done, not on the first photo.',
+  );
+  assert.ok(
+    handlersSource.includes("data === 'reply_ticket_photo_done'"),
+    'A handler must post the reply once every photo has been attached.',
+  );
+
+  // The opening message and its mirrored replies[0] must carry the same set.
+  assert.ok(
+    handlersSource.includes('cakePhotos: supportPhotos.length ? supportPhotos : undefined'),
+    'A bot ticket must store the whole album on the ticket.',
+  );
+  assert.ok(
+    handlersSource.includes('photos: supportPhotos.length ? supportPhotos : undefined'),
+    "The mirrored replies[0] must carry the same album as the opening message.",
+  );
+
+  // The panel renders a list, so a second image can never be dropped.
+  assert.ok(
+    supportManagerSource.includes('imageSources: string[]'),
+    'The attachment component must accept every image, not a single source.',
+  );
+  assert.ok(
+    supportManagerSource.includes('collectTicketImageSources(\n                            selectedTicket.cakePhotos'),
+    'The opening bubble must render every attached image.',
+  );
+  assert.ok(
+    supportManagerSource.includes('reply.photos'),
+    'Reply bubbles must render every attached image.',
+  );
+
+  console.log('✅ support messages keep every attached photo');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1604,6 +1674,7 @@ async function main() {
   await testBroadcastAudienceTargeting();
   await testBroadcastCanStartAReplyableConversation();
   await testTicketThreadKeepsEveryMessageAndItsRealSender();
+  testSupportMessagesKeepEveryAttachedPhoto();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

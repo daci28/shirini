@@ -498,6 +498,47 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
     return true;
   }
 
+  // Posts the reply once the customer has finished attaching images. It must be
+  // matched before the broad `reply_ticket_` prefix below.
+  if (data === 'reply_ticket_photo_done') {
+    const state = ctx.userStates.get(ctx.chatId);
+    if (!state || state.mode !== 'reply_to_ticket_photo' || !state.ticketId) {
+      await tgSend(ctx, '⚠️ مرحله پاسخ منقضی شده است. لطفاً دوباره گزینه «پاسخ به این تیکت» را انتخاب کنید.', [
+        [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }]
+      ]);
+      return true;
+    }
+
+    const ticket = ctx.supportTickets.find(t => t.id === state.ticketId);
+    if (!ticket) {
+      ctx.userStates.delete(ctx.chatId);
+      await tgSend(ctx, '⚠️ تیکت موردنظر یافت نشد. لطفاً از پیام پشتیبانی دوباره تلاش کنید.', [
+        [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }]
+      ]);
+      return true;
+    }
+
+    const replyPhotos: string[] = Array.isArray(state.photos)
+      ? state.photos
+      : (state.photo ? [state.photo] : []);
+    ticket.replies.push({
+      id: `rep-${Date.now()}`,
+      sender: 'customer',
+      senderName: ticket.customerName || 'مشتری',
+      text: state.replyText || '',
+      photo: replyPhotos[0],
+      photos: replyPhotos.length ? replyPhotos : undefined,
+      createdAt: new Date().toISOString()
+    });
+    ticket.status = 'in_progress';
+    ticket.updatedAt = new Date().toISOString();
+    ctx.userStates.delete(ctx.chatId);
+    await tgSend(ctx, '✅ پاسخ شما ثبت شد. پشتیبانی به زودی پاسخ می‌دهد.', [
+      [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }]
+    ]);
+    return true;
+  }
+
   if (data.startsWith('reply_ticket_')) {
     const ticketId = data.replace('reply_ticket_', '');
     const state = ctx.userStates.get(ctx.chatId) || {};
@@ -549,6 +590,9 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
 
     const now = new Date().toISOString();
     const ticketNumber = `TK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const supportPhotos: string[] = Array.isArray(state.photos)
+      ? state.photos
+      : (state.photo ? [state.photo] : []);
     ctx.supportTickets.unshift({
       id: `tkt-${Date.now()}`,
       ticketNumber,
@@ -559,7 +603,8 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
       category: state.category as any,
       subject: state.subject || 'پیام از ربات',
       message: state.message || '',
-      cakePhoto: state.photo,
+      cakePhoto: supportPhotos[0],
+      cakePhotos: supportPhotos.length ? supportPhotos : undefined,
       status: 'open',
       priority: 'normal',
       createdAt: now,
@@ -569,6 +614,8 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
         sender: 'customer',
         senderName: customerName,
         text: state.message || '',
+        photo: supportPhotos[0],
+        photos: supportPhotos.length ? supportPhotos : undefined,
         createdAt: now
       }]
     });

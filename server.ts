@@ -338,6 +338,7 @@ if (persistedData) {
       senderName: openedByAdmin ? 'مدیریت قنادی' : ticket.customerName || 'مشتری',
       text: ticket.message || '',
       photo: ticket.cakePhoto || undefined,
+      photos: ticket.cakePhotos?.length ? ticket.cakePhotos : undefined,
       createdAt: ticket.createdAt,
     });
     repairedTickets++;
@@ -588,7 +589,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-20-fix-ticket-thread';
+const APP_REVISION = '2026-09-20-multi-photo-tickets';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -1396,7 +1397,7 @@ async function startServer() {
       sendToTelegramTopic(
         'support',
         `💬 <b>پیام پشتیبانی جدید (${newTicket.ticketNumber})</b>\n\n👤 <b>مشتری:</b> ${newTicket.customerName} ${newTicket.customerUsername ? `(@${newTicket.customerUsername})` : ''}\n📂 <b>موضوع:</b> ${categoryLabels[newTicket.category] || newTicket.category}\n📌 <b>عنوان:</b> ${newTicket.subject}\n\n📝 <b>متن پیام:</b>\n<i>${newTicket.message}</i>\n${newTicket.orderNumber ? `\n🔖 شماره سفارش مرتبط: <code>${newTicket.orderNumber}</code>` : ''}`,
-        newTicket.cakePhoto
+        newTicket.cakePhotos?.length ? newTicket.cakePhotos : newTicket.cakePhoto
       );
 
       res.status(201).json(newTicket);
@@ -4972,16 +4973,32 @@ async function startServer() {
         // unlike a generated Railway URL it survives domain configuration changes.
         const supportPhotoState = userStates.get(chatId);
         if (supportPhotoState && supportPhotoState.mode === 'support_photo') {
-          const photoFileId = incomingImageFileId;
-          supportPhotoState.photo = photoFileId;
-          supportPhotoState.mode = 'support_finalize';
+          // Customers often attach several pictures of the same problem, either
+          // as one album or one after another. Collect them all instead of
+          // letting each new image overwrite the previous one.
+          const albumFiles: string[] = Array.isArray(msg?.__albumFiles) ? msg.__albumFiles : [incomingImageFileId];
+          const collected: string[] = Array.isArray(supportPhotoState.photos)
+            ? [...supportPhotoState.photos]
+            : (supportPhotoState.photo ? [supportPhotoState.photo] : []);
+          for (const fileId of albumFiles) {
+            if (!collected.includes(fileId)) collected.push(fileId);
+          }
+          supportPhotoState.photos = collected.slice(0, 10);
+          supportPhotoState.photo = supportPhotoState.photos[0] || null;
+          // Stay in the photo step so further images keep being collected; the
+          // buttons below let the customer finish whenever they are done.
+          supportPhotoState.mode = 'support_photo';
           userStates.set(chatId, supportPhotoState);
+          const supportPhotoCount = supportPhotoState.photos.length;
+          const supportAtLimit = supportPhotoCount >= 10;
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: '✅ تصویر دریافت شد.\n\nآیا می‌خواهید تیکت را ثبت نهایی کنید؟',
+              text: supportAtLimit
+                ? `✅ مجموعاً <b>${supportPhotoCount.toLocaleString('fa-IR')}</b> تصویر (حداکثر مجاز) دریافت شد.\n\nبرای ادامه «✅ ثبت نهایی تیکت» را بزنید.`
+                : `✅ تصویر <b>${supportPhotoCount.toLocaleString('fa-IR')}</b> دریافت شد.\n\n📸 اگر تصویر دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت نهایی تیکت» را بزنید.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
                 [{ text: '✅ ثبت نهایی تیکت', callback_data: 'support_finalize' }],
@@ -4995,39 +5012,35 @@ async function startServer() {
         // so it can be rendered through /api/telegram/file on any Railway host.
         const replyPhotoState = userStates.get(chatId);
         if (replyPhotoState && replyPhotoState.mode === 'reply_to_ticket_photo') {
-          const photoFileId = incomingImageFileId;
           const ticket = supportTickets.find(t => t.id === replyPhotoState.ticketId);
           if (ticket) {
-            const replyText = replyPhotoState.replyText || '';
-            ticket.replies.push({
-              id: `rep-${Date.now()}`,
-              sender: 'customer',
-              senderName: ticket.customerName || 'مشتری',
-              text: replyText,
-              photo: photoFileId,
-              createdAt: new Date().toISOString()
-            });
-            ticket.status = 'in_progress';
-            ticket.updatedAt = new Date().toISOString();
-            saveAllData();
-            userStates.delete(chatId);
-            sendToTelegramTopic(
-              'support',
-              `💬 <b>پاسخ جدید مشتری (تیکت ${ticket.ticketNumber})</b>\n\n` +
-                `👤 <b>مشتری:</b> ${escapeTelegramHtml(ticket.customerName)}\n` +
-                `📌 <b>موضوع:</b> ${escapeTelegramHtml(ticket.subject)}\n\n` +
-                `📝 <b>متن پاسخ:</b>\n<i>${escapeTelegramHtml(replyText)}</i>`,
-              photoFileId
-            );
+            // Gather the whole set before posting the reply. Sending it on the
+            // first image would file each extra picture as its own reply, or
+            // drop it entirely once the state was cleared.
+            const albumFiles: string[] = Array.isArray(msg?.__albumFiles) ? msg.__albumFiles : [incomingImageFileId];
+            const collected: string[] = Array.isArray(replyPhotoState.photos)
+              ? [...replyPhotoState.photos]
+              : (replyPhotoState.photo ? [replyPhotoState.photo] : []);
+            for (const fileId of albumFiles) {
+              if (!collected.includes(fileId)) collected.push(fileId);
+            }
+            replyPhotoState.photos = collected.slice(0, 10);
+            replyPhotoState.photo = replyPhotoState.photos[0] || null;
+            userStates.set(chatId, replyPhotoState);
+            const replyPhotoCount = replyPhotoState.photos.length;
+            const replyAtLimit = replyPhotoCount >= 10;
             await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 chat_id: chatId,
-                text: '✅ عکس شما ثبت شد. پشتیبانی به زودی پاسخ می‌دهد.',
+                text: replyAtLimit
+                  ? `✅ مجموعاً <b>${replyPhotoCount.toLocaleString('fa-IR')}</b> عکس (حداکثر مجاز) دریافت شد.\n\nبرای ارسال پاسخ «✅ ثبت و ارسال پاسخ» را بزنید.`
+                  : `✅ عکس <b>${replyPhotoCount.toLocaleString('fa-IR')}</b> دریافت شد.\n\n📸 اگر عکس دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت و ارسال پاسخ» را بزنید.`,
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [
-                  [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }]
+                  [{ text: '✅ ثبت و ارسال پاسخ', callback_data: 'reply_ticket_photo_done' }],
+                  [{ text: '❌ انصراف', callback_data: 'back_to_main' }]
                 ]}
               })
             });
@@ -5471,7 +5484,7 @@ async function startServer() {
                 `👤 <b>مشتری:</b> ${escapeTelegramHtml(repliedTicket.customerName)}\n` +
                 `📌 <b>موضوع:</b> ${escapeTelegramHtml(repliedTicket.subject)}\n\n` +
                 `📝 <b>متن پاسخ:</b>\n<i>${escapeTelegramHtml(lastReply?.text || '')}</i>`,
-              lastReply?.photo
+              lastReply?.photos?.length ? lastReply.photos : lastReply?.photo
             );
           }
         }
@@ -5494,7 +5507,7 @@ async function startServer() {
                 `📂 <b>دسته‌بندی:</b> ${categoryLabels[createdTicket.category] || createdTicket.category}\n` +
                 `📌 <b>عنوان:</b> ${createdTicket.subject}\n\n` +
                 `📝 <b>متن پیام:</b>\n<i>${createdTicket.message}</i>`,
-              createdTicket.cakePhoto
+              createdTicket.cakePhotos?.length ? createdTicket.cakePhotos : createdTicket.cakePhoto
             );
           }
         }

@@ -44,7 +44,7 @@ interface SupportManagerProps {
 export const getTicketImageSource = resolveTelegramImageSource;
 
 interface TicketImageAttachmentProps {
-  imageSource: string;
+  imageSources: string[];
   sender: 'customer' | 'admin';
   senderName: string;
   onPreview: (imageSource: string) => void;
@@ -52,35 +52,69 @@ interface TicketImageAttachmentProps {
 
 /** Keeps first-ticket images and follow-up reply images visually identical. */
 const TicketImageAttachment: React.FC<TicketImageAttachmentProps> = ({
-  imageSource,
+  imageSources,
   sender,
   senderName,
   onPreview,
 }) => {
   const isAdmin = sender === 'admin';
+  if (!imageSources.length) return null;
+  const hasMany = imageSources.length > 1;
 
   return (
     <div className="mt-2.5 space-y-1.5">
       <span className={`block text-[10px] font-bold ${isAdmin ? 'text-purple-200' : 'text-sky-300'}`}>
-        📷 تصویر ارسالی {isAdmin ? 'مدیریت' : 'مشتری'}
+        📷 {hasMany
+          ? `${imageSources.length.toLocaleString('fa-IR')} تصویر ارسالی ${isAdmin ? 'مدیریت' : 'مشتری'}`
+          : `تصویر ارسالی ${isAdmin ? 'مدیریت' : 'مشتری'}`}
       </span>
-      <button
-        type="button"
-        onClick={() => onPreview(imageSource)}
-        className="block overflow-hidden rounded-xl border border-white/10 bg-slate-950/50 hover:opacity-90 transition-opacity"
-        title="مشاهده و زوم تصویر"
-      >
-        <img
-          src={imageSource}
-          alt={`تصویر ارسالی ${senderName}`}
-          className="max-h-64 max-w-full object-contain bg-slate-900"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-        />
-      </button>
-      <p className="text-[10px] text-slate-400">برای زوم و مشاهده کامل تصویر کلیک کنید</p>
+      <div className={hasMany ? 'grid grid-cols-2 gap-1.5' : ''}>
+        {imageSources.map((imageSource, index) => (
+          <button
+            key={`${imageSource}-${index}`}
+            type="button"
+            onClick={() => onPreview(imageSource)}
+            className="relative block overflow-hidden rounded-xl border border-white/10 bg-slate-950/50 hover:opacity-90 transition-opacity"
+            title="مشاهده و زوم تصویر"
+          >
+            <img
+              src={imageSource}
+              alt={`تصویر ${index + 1} ارسالی ${senderName}`}
+              className={`${hasMany ? 'h-32 w-full' : 'max-h-64 max-w-full'} object-contain bg-slate-900`}
+              referrerPolicy="no-referrer"
+              loading="lazy"
+            />
+            {hasMany && (
+              <span className="absolute top-1 right-1 rounded-full bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-bold text-slate-200">
+                {(index + 1).toLocaleString('fa-IR')}/{imageSources.length.toLocaleString('fa-IR')}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <p className="text-[10px] text-slate-400">
+        برای زوم و مشاهده کامل {hasMany ? 'هر تصویر' : 'تصویر'} کلیک کنید
+      </p>
     </div>
   );
+};
+
+/**
+ * Builds the display list for a message. `photo`/`cakePhoto` hold only the
+ * first image, so tickets saved before albums were supported keep working
+ * while newer ones show every attachment.
+ */
+const collectTicketImageSources = (
+  photos: string[] | undefined,
+  ...singles: (string | undefined)[]
+): string[] => {
+  const candidates = [...(photos || []), ...singles];
+  const sources: string[] = [];
+  for (const candidate of candidates) {
+    const source = getTicketImageSource(candidate);
+    if (source && !sources.includes(source)) sources.push(source);
+  }
+  return sources;
 };
 
 const getLegacyReplyImage = (text?: string): string | undefined => {
@@ -661,14 +695,15 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           <span>{new Date(selectedTicket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         {selectedTicket.message && <p className="whitespace-pre-line">{selectedTicket.message}</p>}
-                        {getTicketImageSource(selectedTicket.cakePhoto) && (
-                          <TicketImageAttachment
-                            imageSource={getTicketImageSource(selectedTicket.cakePhoto)!}
-                            sender={openedByAdmin ? 'admin' : 'customer'}
-                            senderName={openerName}
-                            onPreview={setPreviewImage}
-                          />
-                        )}
+                        <TicketImageAttachment
+                          imageSources={collectTicketImageSources(
+                            selectedTicket.cakePhotos,
+                            selectedTicket.cakePhoto,
+                          )}
+                          sender={openedByAdmin ? 'admin' : 'customer'}
+                          senderName={openerName}
+                          onPreview={setPreviewImage}
+                        />
                       </div>
                     </div>
                   );
@@ -679,7 +714,11 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   const isAdmin = reply.sender === 'admin';
                   // Replies created before the photo field existed stored a
                   // markdown image URL in text. Continue rendering those too.
-                  const imageSource = getTicketImageSource(reply.photo || getLegacyReplyImage(reply.text));
+                  const imageSources = collectTicketImageSources(
+                    reply.photos,
+                    reply.photo,
+                    getLegacyReplyImage(reply.text),
+                  );
                   const displayText = getReplyDisplayText(reply.text);
                   return (
                     <div
@@ -703,14 +742,12 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           <span>{new Date(reply.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         {displayText && <p className="whitespace-pre-line">{displayText}</p>}
-                        {imageSource && (
-                          <TicketImageAttachment
-                            imageSource={imageSource}
-                            sender={reply.sender}
-                            senderName={reply.senderName}
-                            onPreview={setPreviewImage}
-                          />
-                        )}
+                        <TicketImageAttachment
+                          imageSources={imageSources}
+                          sender={reply.sender}
+                          senderName={reply.senderName}
+                          onPreview={setPreviewImage}
+                        />
                       </div>
                     </div>
                   );
@@ -791,7 +828,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
                   {/* Makes a stale deployment obvious at a glance. */}
                   <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
-                    v2026-09-20-fix-ticket-thread
+                    v2026-09-20-multi-photo-tickets
                   </p>
                 </div>
               </div>

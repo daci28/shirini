@@ -1390,6 +1390,51 @@ async function testClickableControlsShowAHandCursor() {
   console.log('✅ clickable panel controls show a hand cursor');
 }
 
+/**
+ * Every discount-step button that server.ts routes into the checkout flow must
+ * actually be handled there.
+ *
+ * `no_discount` was routed but had no branch, so handleCheckoutCallback
+ * returned false and the customer was silently dropped out of checkout instead
+ * of reaching the payment step that asks for the receipt photo.
+ */
+async function testEveryRoutedCheckoutCallbackIsHandled() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const flowSource = fs.readFileSync(new URL('../src/checkoutFlow.ts', import.meta.url), 'utf8');
+
+  const routerLine = serverSource
+    .split('\n')
+    .find((line) => line.includes('handleCheckoutCallback') === false && line.includes("data === 'checkout_skip_discount'"));
+  assert.ok(routerLine, 'the checkout callback router must exist in server.ts');
+
+  const routed = [...routerLine.matchAll(/data === '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(routed.length > 5, 'the router should list the checkout callbacks');
+
+  for (const payload of routed) {
+    // confirm_order / cancel_order are handled by the generic order handlers.
+    if (payload === 'confirm_order' || payload === 'cancel_order') continue;
+    assert.ok(
+      flowSource.includes(`'${payload}'`),
+      `server.ts routes "${payload}" into the checkout flow, but checkoutFlow.ts never handles it — ` +
+        'the customer would be dropped out of checkout'
+    );
+  }
+
+  // Both the current and the legacy "no coupon" payloads must finish registration.
+  const skipBranch = flowSource.match(/if \(data === 'checkout_skip_discount'[^)]*\)\s*\{[\s\S]*?\}/);
+  assert.ok(skipBranch, 'the skip-discount branch must exist');
+  assert.ok(
+    skipBranch[0].includes('finishRegistration'),
+    'skipping the discount must go on to the payment step, not stop'
+  );
+  assert.ok(
+    /data === 'checkout_skip_discount' \|\| data === 'no_discount'/.test(flowSource),
+    'the legacy no_discount button must behave exactly like the current skip button'
+  );
+
+  console.log('✅ every routed checkout callback is handled, including legacy discount buttons');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1405,6 +1450,7 @@ async function main() {
   await testDataFileSurvivesACrashDuringWrite();
   await testCorruptedDataFileFallsBackToABackup();
   await testClickableControlsShowAHandCursor();
+  await testEveryRoutedCheckoutCallbackIsHandled();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

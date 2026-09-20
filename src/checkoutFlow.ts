@@ -382,7 +382,10 @@ async function offerRestart(ctx: TelegramContext): Promise<boolean> {
 const CHECKOUT_CALLBACKS = new Set([
   'delivery_pickup', 'delivery_delivery',
   'payment_cash_on_delivery', 'payment_online', 'checkout_new_address',
-  'checkout_skip_discount',
+  // `no_discount` / `has_discount` are legacy payloads: a customer whose chat
+  // still shows a keyboard from an older build would otherwise press a button
+  // that no branch handles, leaving the order stuck at the discount step.
+  'checkout_skip_discount', 'no_discount', 'has_discount',
 ]);
 
 export async function handleCheckoutCallback(ctx: TelegramContext, data: string): Promise<boolean> {
@@ -443,11 +446,19 @@ export async function handleCheckoutCallback(ctx: TelegramContext, data: string)
     return true;
   }
 
-  if (data === 'checkout_skip_discount') {
+  // `no_discount` is the legacy payload for the same action.
+  if (data === 'checkout_skip_discount' || data === 'no_discount') {
     draft.couponCode = undefined;
     draft.discountAmount = 0;
     ctx.userStates.set(ctx.chatId, state);
     await finishRegistration(ctx);
+    return true;
+  }
+
+  // Legacy "I have a coupon" button: re-open the discount prompt rather than
+  // falling through to the main menu.
+  if (data === 'has_discount') {
+    await askForDiscountCode(ctx);
     return true;
   }
 

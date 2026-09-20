@@ -560,7 +560,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-20-broadcast-in-tickets';
+const APP_REVISION = '2026-09-20-rename-broadcast-button';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',

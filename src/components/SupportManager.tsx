@@ -367,7 +367,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
               }`}
             >
               <Megaphone className="w-4 h-4" />
-              <span>{showBroadcast ? 'بستن پیام گروهی' : 'ارسال پیام گروهی'}</span>
+              <span>{showBroadcast ? 'بستن پیام به مشتریان' : 'ارسال پیام به مشتریان'}</span>
             </button>
 
             <button
@@ -767,7 +767,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
                   {/* Makes a stale deployment obvious at a glance. */}
                   <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
-                    v2026-09-20-broadcast-in-tickets
+                    v2026-09-20-rename-broadcast-button
                   </p>
                 </div>
               </div>

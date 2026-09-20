@@ -1195,6 +1195,7 @@ export default function App() {
             tickets={supportTickets}
             orders={orders}
             customOrders={customOrders}
+            customers={customers}
             botSettings={botSettings}
             onAddTicket={handleAddSupportTicket}
             onReplyTicket={handleReplySupportTicket}
@@ -1254,6 +1255,7 @@ export default function App() {
           <BotSettingsComponent
             settings={botSettings}
             onUpdateSettings={handleUpdateSettings}
+            customers={customers}
           />
         )}
 

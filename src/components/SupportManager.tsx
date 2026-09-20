@@ -20,7 +20,7 @@ import {
   Check,
   Plus
 } from 'lucide-react';
-import { SupportTicket, TicketStatus, SupportCategory, BotSettings, Order, CustomPastryOrder } from '../types';
+import { SupportTicket, TicketStatus, SupportCategory, BotSettings, Order, CustomPastryOrder, CustomerUser } from '../types';
 import { resolveTelegramImageSource } from '../utils/telegramImage';
 import { matchesSearchValues } from '../utils/search';
 import { ZoomableImageModal } from './ZoomableImageModal';
@@ -29,6 +29,8 @@ interface SupportManagerProps {
   tickets: SupportTicket[];
   orders?: Order[];
   customOrders?: CustomPastryOrder[];
+  /** Existing customers, so a ticket can be opened for someone already known. */
+  customers?: CustomerUser[];
   botSettings: BotSettings;
   onAddTicket: (ticket: Omit<SupportTicket, 'id' | 'ticketNumber' | 'createdAt' | 'updatedAt' | 'replies'>) => Promise<SupportTicket>;
   onReplyTicket: (ticketId: string, replyText: string, senderName?: string) => Promise<void>;
@@ -93,6 +95,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
   tickets,
   orders = [],
   customOrders = [],
+  customers = [],
   botSettings,
   onAddTicket,
   onReplyTicket,
@@ -109,6 +112,8 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // New ticket form state
+  const [customerPickerQuery, setCustomerPickerQuery] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerTelegramId, setNewCustomerTelegramId] = useState('');
@@ -117,6 +122,40 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [newOrderNumber, setNewOrderNumber] = useState('');
   const [newCakePhoto, setNewCakePhoto] = useState('');
+
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) || null;
+
+  // Picking an existing customer fills the identity fields (including the
+  // Telegram id) so the reply actually reaches them in the bot.
+  const pickerResults = (() => {
+    const q = customerPickerQuery.trim().toLowerCase();
+    const pool = [...customers].sort((a, b) =>
+      (b.lastActiveAt || '').localeCompare(a.lastActiveAt || '')
+    );
+    if (!q) return pool.slice(0, 8);
+    return pool
+      .filter((c) =>
+        [c.name, c.phone, c.username, c.telegramId]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q))
+      )
+      .slice(0, 8);
+  })();
+
+  const handlePickCustomer = (customer: CustomerUser) => {
+    setSelectedCustomerId(customer.id);
+    setNewCustomerName(customer.name);
+    setNewCustomerPhone(customer.phone || '');
+    setNewCustomerTelegramId(customer.telegramId || '');
+    setCustomerPickerQuery('');
+  };
+
+  const handleClearSelectedCustomer = () => {
+    setSelectedCustomerId('');
+    setNewCustomerName('');
+    setNewCustomerPhone('');
+    setNewCustomerTelegramId('');
+  };
 
   const selectedTicket = tickets.find((t) => t.id === selectedTicketId) || null;
 
@@ -228,6 +267,8 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
       setSelectedTicketId(created.id);
 
       // Reset form
+      setSelectedCustomerId('');
+      setCustomerPickerQuery('');
       setNewCustomerName('');
       setNewCustomerPhone('');
       setNewCustomerTelegramId('');
@@ -710,27 +751,84 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
             </div>
 
             <form onSubmit={handleCreateNewTicket} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">نام مشتری *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
-                    placeholder="مثال: مریم کریمی"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">تلفن همراه</label>
-                  <input
-                    type="text"
-                    value={newCustomerPhone}
-                    onChange={(e) => setNewCustomerPhone(e.target.value)}
-                    placeholder="0912..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-purple-500"
-                  />
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
+                <label className="block text-xs font-bold text-slate-300">
+                  انتخاب مشتری از لیست
+                </label>
+
+                {selectedCustomer ? (
+                  <div className="flex items-center justify-between gap-2 rounded-xl bg-purple-500/10 border border-purple-500/30 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-purple-200 truncate">{selectedCustomer.name}</p>
+                      <p className="text-[10px] text-slate-400 font-mono" dir="ltr">
+                        {selectedCustomer.phone || 'بدون شماره'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearSelectedCustomer}
+                      className="text-[10px] font-bold text-slate-300 hover:text-white bg-slate-800 px-2.5 py-1.5 rounded-lg shrink-0"
+                    >
+                      تغییر مشتری
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={customerPickerQuery}
+                      onChange={(e) => setCustomerPickerQuery(e.target.value)}
+                      placeholder="جست‌وجو بین مشتریان (نام، تلفن، آیدی تلگرام)..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                    />
+                    <div className="max-h-36 overflow-y-auto space-y-1">
+                      {pickerResults.length === 0 ? (
+                        <p className="text-[10px] text-slate-500 py-2 text-center">
+                          {customers.length === 0
+                            ? 'هنوز مشتری‌ای ثبت نشده است.'
+                            : 'مشتری‌ای پیدا نشد — می‌توانید نام را دستی وارد کنید.'}
+                        </p>
+                      ) : (
+                        pickerResults.map((customer) => (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            onClick={() => handlePickCustomer(customer)}
+                            className="w-full text-right flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800"
+                          >
+                            <span className="text-[11px] font-bold text-slate-100 truncate">{customer.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono shrink-0" dir="ltr">
+                              {customer.phone || '---'}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">نام مشتری *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newCustomerName}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                      placeholder="مثال: مریم کریمی"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">تلفن همراه</label>
+                    <input
+                      type="text"
+                      value={newCustomerPhone}
+                      onChange={(e) => setNewCustomerPhone(e.target.value)}
+                      placeholder="0912..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
                 </div>
               </div>
 

@@ -39,13 +39,16 @@ import {
   InvoiceStatus,
   ForumTopicKey,
   ForumTopicConfig,
-  RequiredChannel
+  RequiredChannel,
+  BroadcastAudience,
+  BroadcastRecord
 } from './src/types';
 import { handleCustomerCallback, handleAdminCallback, handleTextMessage, handleAdminCatSelect } from './src/telegramHandlers';
 import { loadSettings, saveSettings } from './src/persistSettings';
 import { PersistentMap } from './src/persistStates';
 import { startCheckout, handleCheckoutState, handleCheckoutCallback } from './src/checkoutFlow';
 import { resolveUniqueOrderNumber } from './src/utils/orderNumber';
+import { collectCustomerTags, resolveBroadcastAudience } from './src/utils/broadcastAudience';
 import { DATA_DIR, loadData, saveData, PersistedData } from './src/persistData';
 import { getPanelCredentials, omitPanelPassword } from './src/utils/panelAuth';
 import { getIranianPersianDate, normalizeIranianDeliveryDate, normalizeIranianDeliveryTime, formatIranianDeliveryDate, formatIranianDeliveryTime } from './src/utils/iranianDate';
@@ -235,6 +238,7 @@ let supportTickets: SupportTicket[] = [...INITIAL_SUPPORT_TICKETS];
 let customers: CustomerUser[] = [...INITIAL_CUSTOMERS];
 let walletTransactions: WalletTransaction[] = [...INITIAL_WALLET_TRANSACTIONS];
 let backupSchedule: BackupScheduleConfig = { ...INITIAL_BACKUP_SCHEDULE };
+let broadcasts: BroadcastRecord[] = [];
 let backupSnapshots: BackupSnapshot[] = [...INITIAL_BACKUP_SNAPSHOTS];
 let customOrders: CustomPastryOrder[] = [...INITIAL_CUSTOM_ORDERS];
 /** Only standalone/manual invoices live here; order invoices are derived safely on read. */
@@ -312,6 +316,7 @@ if (persistedData) {
   walletTransactions = persistedData.walletTransactions || walletTransactions;
   backupSnapshots = (persistedData.backupSnapshots || backupSnapshots).map(redactBackupSnapshot);
   backupSchedule = persistedData.backupSchedule || backupSchedule;
+  broadcasts = persistedData.broadcasts || broadcasts;
   console.log("Loaded persisted data");
 }
 
@@ -327,7 +332,8 @@ function saveAllData() {
     customers,
     walletTransactions,
     backupSnapshots,
-    backupSchedule
+    backupSchedule,
+    broadcasts
   });
 }
 
@@ -2663,47 +2669,106 @@ async function startServer() {
   });
 
   // Broadcast message to users
+  /** Preview an audience size before actually sending anything. */
+  app.post('/api/telegram/broadcast/preview', (req: Request, res: Response) => {
+    const audience: BroadcastAudience = req.body?.audience || { type: 'all' };
+    const { recipients, label } = resolveBroadcastAudience(customers, audience);
+    res.json({
+      audienceLabel: label,
+      recipientsCount: recipients.length,
+      recipients: recipients.slice(0, 50).map((c) => ({
+        id: c.id, name: c.name, phone: c.phone, tier: c.tier, tags: c.tags || [],
+      })),
+    });
+  });
+
+  app.get('/api/telegram/broadcasts', (_req: Request, res: Response) => {
+    res.json([...broadcasts].sort((a, b) => b.sentAt.localeCompare(a.sentAt)).slice(0, 50));
+  });
+
   app.post('/api/telegram/broadcast', async (req: Request, res: Response) => {
     const { message, photo } = req.body;
-    if (!message) {
-      res.status(400).json({ error: 'Message content is required' });
+    const audience: BroadcastAudience = req.body?.audience || { type: 'all' };
+
+    if (!message || !String(message).trim()) {
+      res.status(400).json({ error: 'متن پیام نمی‌تواند خالی باشد' });
       return;
     }
 
+    const token = getTelegramBotToken();
+    if (!token) {
+      res.status(400).json({ error: 'توکن ربات تلگرام تنظیم نشده است.' });
+      return;
+    }
+
+    const { recipients, label } = resolveBroadcastAudience(customers, audience);
+    if (recipients.length === 0) {
+      res.status(400).json({
+        error: 'هیچ مشتری‌ای با این شرایط پیدا نشد. دسته‌بندی یا فیلتر را تغییر دهید.',
+        audienceLabel: label,
+      });
+      return;
+    }
+
+    const text = String(message).trim();
     let sentCount = 0;
-    if (getTelegramBotToken() && registeredTelegramChatIds.size > 0) {
-      for (const chatId of registeredTelegramChatIds) {
-        try {
-          if (photo) {
-            await fetch(`https://api.telegram.org/bot${getTelegramBotToken()}/sendPhoto`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: chatId,
-                photo: photo,
-                caption: message,
-                parse_mode: 'HTML'
-              })
-            });
-          } else {
-            await fetch(`https://api.telegram.org/bot${getTelegramBotToken()}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'HTML'
-              })
-            });
-          }
+    const failures: { name: string; reason: string }[] = [];
+
+    for (const customer of recipients) {
+      try {
+        const endpoint = photo ? 'sendPhoto' : 'sendMessage';
+        const payload = photo
+          ? { chat_id: customer.telegramId, photo, caption: text, parse_mode: 'HTML' }
+          : { chat_id: customer.telegramId, text, parse_mode: 'HTML' };
+
+        const tgRes = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        // Telegram answers 200 with ok:false for blocked bots, so the body
+        // decides success — not the HTTP status.
+        const body: any = await tgRes.json().catch(() => ({}));
+        if (body && body.ok) {
           sentCount++;
-        } catch (e) {
-          console.error(`Failed to send broadcast to ${chatId}:`, e);
+        } else {
+          failures.push({ name: customer.name, reason: body?.description || 'خطای نامشخص' });
         }
+      } catch (e: any) {
+        failures.push({ name: customer.name, reason: e?.message || 'خطای شبکه' });
       }
     }
 
-    res.json({ success: true, recipientsCount: registeredTelegramChatIds.size, sentCount });
+    const record: BroadcastRecord = {
+      id: `bc-${Date.now()}`,
+      message: text,
+      photo: photo || undefined,
+      audience,
+      audienceLabel: label,
+      recipientsCount: recipients.length,
+      sentCount,
+      failedCount: failures.length,
+      sentAt: new Date().toISOString(),
+    };
+    broadcasts.push(record);
+    if (broadcasts.length > 200) broadcasts = broadcasts.slice(-200);
+    saveAllData();
+
+    sendToTelegramTopic(
+      'customers',
+      `📣 <b>ارسال پیام گروهی</b>\n\n🎯 مخاطب: ${escapeTelegramHtml(label)}\n✅ ارسال موفق: <b>${sentCount}</b> از <b>${recipients.length}</b>` +
+        (failures.length ? `\n⚠️ ناموفق: <b>${failures.length}</b>` : '')
+    );
+
+    res.json({
+      success: true,
+      audienceLabel: label,
+      recipientsCount: recipients.length,
+      sentCount,
+      failedCount: failures.length,
+      failures: failures.slice(0, 10),
+    });
   });
 
   // --- Telegram Forum Supergroup Topics API ---
@@ -3821,6 +3886,13 @@ async function startServer() {
 
       if (b.source === 'manual' || b.source === 'bot') clean.source = b.source;
 
+      // Custom admin categories used for targeted broadcasts.
+      if (Array.isArray(b.tags)) {
+        clean.tags = Array.from(
+          new Set<string>(b.tags.map((t: unknown) => String(t || '').trim()).filter(Boolean))
+        ).slice(0, 20);
+      }
+
       customers[index] = { ...customer, ...clean, lastActiveAt: new Date().toISOString() };
       saveAllData();
       sendToTelegramTopic(
@@ -3831,6 +3903,46 @@ async function startServer() {
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
+  });
+
+  // All distinct tags currently in use, for the broadcast/category pickers.
+  app.get('/api/customers/tags', (_req: Request, res: Response) => {
+    res.json(collectCustomerTags(customers));
+  });
+
+  /**
+   * Add or remove one tag across many customers at once, so an admin can build
+   * a category from the customer list without editing people one by one.
+   */
+  app.post('/api/customers/tags/bulk', (req: Request, res: Response) => {
+    const tag = String(req.body?.tag || '').trim();
+    const action = req.body?.action === 'remove' ? 'remove' : 'add';
+    const ids: string[] = Array.isArray(req.body?.customerIds) ? req.body.customerIds.map(String) : [];
+
+    if (!tag) {
+      res.status(400).json({ error: 'نام دسته‌بندی نمی‌تواند خالی باشد' });
+      return;
+    }
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'حداقل یک مشتری باید انتخاب شود' });
+      return;
+    }
+
+    const wanted = new Set(ids);
+    let changed = 0;
+    for (const customer of customers) {
+      if (!wanted.has(customer.id)) continue;
+      const current = new Set(customer.tags || []);
+      const before = current.size;
+      if (action === 'add') current.add(tag);
+      else current.delete(tag);
+      if (current.size !== before) {
+        customer.tags = [...current];
+        changed++;
+      }
+    }
+    if (changed > 0) saveAllData();
+    res.json({ success: true, tag, action, changed });
   });
 
   // Adjust customer wallet balance

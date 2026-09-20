@@ -238,8 +238,50 @@ export interface CustomerUser {
   tier: 'bronze' | 'silver' | 'gold' | 'vip';
   /** 'bot' = created from Telegram activity; 'manual' = added by an admin in the panel. */
   source?: 'bot' | 'manual';
+  /**
+   * Free-form admin labels ("دسته‌بندی دلخواه") used to target broadcasts,
+   * e.g. ["مشتری عروسی", "عمده‌فروش"]. Stored as plain strings so the admin can
+   * invent a category without a migration.
+   */
+  tags?: string[];
   createdAt: string;
   lastActiveAt: string;
+}
+
+/** Which customers a broadcast should go to. */
+export type BroadcastAudienceType =
+  | 'all'
+  | 'tag'
+  | 'tier'
+  | 'selected'
+  | 'no_orders'
+  | 'recent_buyers'
+  | 'inactive';
+
+export interface BroadcastAudience {
+  type: BroadcastAudienceType;
+  /** Required when type === 'tag'. */
+  tag?: string;
+  /** Required when type === 'tier'. */
+  tier?: CustomerUser['tier'];
+  /** Customer ids, required when type === 'selected'. */
+  customerIds?: string[];
+  /** Day window for 'recent_buyers' / 'inactive'. Defaults to 30. */
+  days?: number;
+}
+
+/** A sent broadcast, kept so the admin can see what went out and to whom. */
+export interface BroadcastRecord {
+  id: string;
+  message: string;
+  photo?: string;
+  audience: BroadcastAudience;
+  /** Human-readable summary of the audience, e.g. «برچسب: مشتری عروسی». */
+  audienceLabel: string;
+  recipientsCount: number;
+  sentCount: number;
+  failedCount: number;
+  sentAt: string;
 }
 
 export interface WalletTransaction {

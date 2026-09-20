@@ -23,6 +23,8 @@ export interface PersistedData {
   walletTransactions: any[];
   backupSnapshots: any[];
   backupSchedule: any;
+  /** Sent broadcast history (targeted customer messages). */
+  broadcasts?: any[];
 }
 
 function rollingPath(index: number): string {

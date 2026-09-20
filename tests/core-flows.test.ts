@@ -9,6 +9,7 @@ import { resolveTelegramImageSource } from '../src/utils/telegramImage';
 import { CUSTOM_ORDER_STATUS_LABELS, formatCustomOrderTrackingMessage } from '../src/utils/customOrderTracking';
 import { buildCustomOrderInvoice, buildOrderInvoice, calculateInvoiceAmounts, getCustomPrepaymentStatus, resolveManualInvoiceStatus } from '../src/utils/invoices';
 import { compactSearchValue, matchesSearchValues, normalizeSearchValue } from '../src/utils/search';
+import { canReceiveBroadcast, collectCustomerTags, resolveBroadcastAudience } from '../src/utils/broadcastAudience';
 import {
   formatIranianDeliveryDate,
   getIranianPersianDate,
@@ -1435,6 +1436,67 @@ async function testEveryRoutedCheckoutCallbackIsHandled() {
   console.log('✅ every routed checkout callback is handled, including legacy discount buttons');
 }
 
+/**
+ * Targeted broadcasts: an admin must be able to message everyone, a custom
+ * category (tag), a hand-picked list, or a built-in filter — and never message
+ * someone the bot cannot reach.
+ */
+async function testBroadcastAudienceTargeting() {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.parse('2026-09-20T00:00:00.000Z');
+  const make = (over: any) => ({
+    id: over.id, telegramId: over.telegramId ?? over.id, name: over.name || over.id,
+    phone: '0912', walletBalance: 0, rewardPoints: 0,
+    totalOrdersCount: over.totalOrdersCount ?? 0, totalSpentTomans: 0,
+    tier: over.tier || 'bronze', tags: over.tags,
+    createdAt: new Date(now).toISOString(),
+    lastActiveAt: new Date(now - (over.inactiveDays ?? 0) * day).toISOString(),
+  }) as any;
+
+  const customers = [
+    make({ id: 'c1', tier: 'vip', totalOrdersCount: 5, tags: ['عروسی'], inactiveDays: 2 }),
+    make({ id: 'c2', tier: 'gold', totalOrdersCount: 2, tags: ['عروسی'], inactiveDays: 10 }),
+    make({ id: 'c3', tier: 'bronze', totalOrdersCount: 0, inactiveDays: 90 }),
+    make({ id: 'c4', tier: 'silver', totalOrdersCount: 3, tags: ['عمده'], inactiveDays: 200 }),
+    // No Telegram id: added by an admin in the panel, unreachable by the bot.
+    make({ id: 'c5', telegramId: '', tier: 'vip', totalOrdersCount: 9, tags: ['عروسی'] }),
+    make({ id: 'c6', telegramId: 'guest', tier: 'vip', totalOrdersCount: 1, tags: ['عروسی'] }),
+  ];
+
+  const ids = (a: any) => resolveBroadcastAudience(customers, a, now).recipients.map((c) => c.id);
+
+  // Unreachable customers are excluded from every audience, including "all".
+  assert.deepEqual(ids({ type: 'all' }), ['c1', 'c2', 'c3', 'c4']);
+  assert.equal(canReceiveBroadcast(customers[4]), false, 'a customer without a telegram id is unreachable');
+  assert.equal(canReceiveBroadcast(customers[5]), false, '"guest" is not a real chat id');
+
+  // A custom category only reaches its own members — never everyone.
+  assert.deepEqual(ids({ type: 'tag', tag: 'عروسی' }), ['c1', 'c2']);
+  assert.deepEqual(ids({ type: 'tag', tag: 'عمده' }), ['c4']);
+  assert.deepEqual(ids({ type: 'tag', tag: 'دستهٔ خالی' }), [], 'an unknown tag must reach nobody');
+  assert.deepEqual(ids({ type: 'tag', tag: '' }), [], 'a blank tag must never fall back to everyone');
+
+  assert.deepEqual(ids({ type: 'tier', tier: 'vip' }), ['c1']);
+  assert.deepEqual(ids({ type: 'selected', customerIds: ['c2', 'c4', 'c5'] }), ['c2', 'c4']);
+  assert.deepEqual(ids({ type: 'selected', customerIds: [] }), [], 'selecting nobody must reach nobody');
+  assert.deepEqual(ids({ type: 'no_orders' }), ['c3']);
+  assert.deepEqual(ids({ type: 'recent_buyers', days: 30 }), ['c1', 'c2']);
+  assert.deepEqual(ids({ type: 'inactive', days: 30 }), ['c3', 'c4']);
+
+  // Labels are shown to the admin before sending, so they must name the target.
+  assert.equal(resolveBroadcastAudience(customers, { type: 'tag', tag: 'عروسی' }, now).label, 'برچسب: عروسی');
+  assert.equal(resolveBroadcastAudience(customers, { type: 'all' }, now).label, 'همهٔ مشتریان');
+
+  // The count shown next to a category must be the number of people who will
+  // actually receive the message, so unreachable customers are not counted:
+  // c1 and c2 are tagged "عروسی" and reachable, c5/c6 are tagged but are not.
+  const tags = collectCustomerTags(customers);
+  assert.deepEqual(tags[0], { tag: 'عروسی', count: 2 }, 'tag counts must match real reach');
+  assert.ok(tags.some((t) => t.tag === 'عمده'), 'every tag in use must be listed');
+
+  console.log('✅ broadcast targeting reaches the chosen audience only');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1451,6 +1513,7 @@ async function main() {
   await testCorruptedDataFileFallsBackToABackup();
   await testClickableControlsShowAHandCursor();
   await testEveryRoutedCheckoutCallbackIsHandled();
+  await testBroadcastAudienceTargeting();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

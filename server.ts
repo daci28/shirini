@@ -602,6 +602,17 @@ async function startServer() {
       // from /api/health whether the running deployment actually contains it.
       appRevision: APP_REVISION,
       features: APP_FEATURES,
+      // Which UI the browser will actually get. When this says 'live-source'
+      // on a deployment, the panel is stale even though appRevision is new.
+      clientMode: process.env.NODE_ENV === 'production' ? 'built-bundle' : 'live-source',
+      clientBundle: (() => {
+        try {
+          const html = fs.readFileSync(path.join(process.cwd(), 'dist', 'index.html'), 'utf8');
+          return html.match(/assets\/index-[^"']+\.js/)?.[0] || null;
+        } catch {
+          return null;
+        }
+      })(),
       instanceId: INSTANCE_ID,
       botPolling: isPolling,
       hasBotToken: Boolean(getTelegramBotToken()),
@@ -6519,7 +6530,23 @@ async function startServer() {
   }
 
   // --- Vite Middleware ---
-  if (process.env.NODE_ENV !== 'production') {
+  // A built bundle next to a non-production NODE_ENV means the deployment ran
+  // `npm run build` but is about to serve the live source through Vite instead
+  // of that bundle. That silently ships stale UI while /api/health reports the
+  // new server build, so treat the built output as the intent.
+  const builtClientEntry = path.join(process.cwd(), 'dist', 'index.html');
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!isProduction && fs.existsSync(builtClientEntry)) {
+    console.warn(
+      '[startup] WARNING: dist/index.html exists but NODE_ENV is not "production", ' +
+        'so the panel is served from live source instead of the built bundle. ' +
+        'On a deployment this serves stale UI while /api/health reports the new build. ' +
+        'Start the server with NODE_ENV=production (npm start already does).'
+    );
+  }
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { 
         middlewareMode: true, 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ExternalLink, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, RotateCcw, X, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ZoomableImageModalProps {
   imageSrc: string | null | undefined;
@@ -7,6 +7,14 @@ interface ZoomableImageModalProps {
   alt: string;
   title?: string;
   description?: string;
+  /**
+   * Every image of the set the opened one belongs to. When it holds more than
+   * one entry the viewer can step through them, so a message with an album
+   * does not have to be closed and reopened picture by picture.
+   */
+  gallery?: string[];
+  /** Called with the newly shown image when the viewer steps through `gallery`. */
+  onNavigate?: (imageSrc: string) => void;
 }
 
 const MIN_ZOOM = 0.5;
@@ -35,6 +43,8 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   alt,
   title = 'مشاهده تصویر',
   description,
+  gallery,
+  onNavigate,
 }) => {
   // `zoom` is intentionally only the compact UI display state. Pan and the
   // actual transform stay in refs; changing them does not re-render the whole
@@ -103,12 +113,30 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     }
   }, []);
 
+  // Only a set with more than one picture turns the viewer into a gallery.
+  const galleryImages = (gallery && gallery.length > 1) ? gallery : [];
+  const galleryIndex = imageSrc ? galleryImages.indexOf(imageSrc) : -1;
+  const hasGallery = galleryIndex >= 0;
+
+  const showRelativeImage = (offset: number) => {
+    if (!hasGallery || !onNavigate) return;
+    // Wrap around, so the last image steps back to the first.
+    const total = galleryImages.length;
+    const nextIndex = (galleryIndex + offset + total) % total;
+    onNavigate(galleryImages[nextIndex]);
+  };
+
   useEffect(() => {
     if (!imageSrc) return undefined;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
+      } else if (event.key === 'ArrowRight') {
+        // The panel is RTL: the right arrow moves towards the previous image.
+        if (hasGallery) { event.preventDefault(); showRelativeImage(-1); }
+      } else if (event.key === 'ArrowLeft') {
+        if (hasGallery) { event.preventDefault(); showRelativeImage(1); }
       } else if (event.key === '+' || event.key === '=') {
         event.preventDefault();
         zoomBy(ZOOM_STEP);
@@ -123,7 +151,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [imageSrc, onClose]);
+  }, [imageSrc, onClose, hasGallery, galleryIndex, galleryImages.length]);
 
   if (!imageSrc) return null;
 
@@ -223,7 +251,14 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
       >
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900 px-3 py-3 sm:px-4">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-bold text-white">{title}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="truncate text-sm font-bold text-white">{title}</h3>
+              {hasGallery && (
+                <span className="shrink-0 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                  {(galleryIndex + 1).toLocaleString('fa-IR')} از {galleryImages.length.toLocaleString('fa-IR')}
+                </span>
+              )}
+            </div>
             {description && <p className="mt-0.5 text-[11px] text-slate-400">{description}</p>}
           </div>
 
@@ -286,6 +321,30 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
           // the image, not the entire page.
           style={{ touchAction: 'none' }}
         >
+          {hasGallery && (
+            <>
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => { event.stopPropagation(); showRelativeImage(-1); }}
+                className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full border border-slate-700 bg-slate-950/80 p-2 text-slate-200 shadow-lg transition hover:bg-slate-800 hover:text-white sm:right-4"
+                aria-label="تصویر قبلی"
+                title="تصویر قبلی"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => { event.stopPropagation(); showRelativeImage(1); }}
+                className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full border border-slate-700 bg-slate-950/80 p-2 text-slate-200 shadow-lg transition hover:bg-slate-800 hover:text-white sm:left-4"
+                aria-label="تصویر بعدی"
+                title="تصویر بعدی"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            </>
+          )}
           <img
             ref={imageRef}
             src={imageSrc}
@@ -300,9 +359,38 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
           />
         </div>
 
+        {hasGallery && (
+          <div className="flex gap-1.5 overflow-x-auto border-t border-slate-800 bg-slate-950/60 px-3 py-2">
+            {galleryImages.map((thumbnail, index) => (
+              <button
+                key={`${thumbnail}-${index}`}
+                type="button"
+                onClick={() => onNavigate?.(thumbnail)}
+                className={`relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border transition ${
+                  index === galleryIndex
+                    ? 'border-amber-400 ring-2 ring-amber-400/40'
+                    : 'border-slate-700 opacity-60 hover:opacity-100'
+                }`}
+                aria-label={`نمایش تصویر ${index + 1}`}
+                title={`تصویر ${index + 1}`}
+              >
+                <img
+                  src={thumbnail}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+
         <footer className="flex flex-col-reverse items-center justify-between gap-2 border-t border-slate-800 bg-slate-900 px-3 py-2.5 sm:flex-row sm:px-4">
           <p className="text-center text-[11px] text-slate-400 sm:text-right">
-            با چرخ ماوس/ترک‌پد یا نیشگون دو انگشت زوم کنید؛ در حالت بزرگ‌نمایی، تصویر را سریع‌تر بکشید.
+            {hasGallery
+              ? 'با دکمه‌های کناری یا کلیدهای جهت‌دار بین تصاویر جابه‌جا شوید؛ با چرخ ماوس یا نیشگون دو انگشت زوم کنید.'
+              : 'با چرخ ماوس/ترک‌پد یا نیشگون دو انگشت زوم کنید؛ در حالت بزرگ‌نمایی، تصویر را سریع‌تر بکشید.'}
           </p>
           <a
             href={imageSrc}

@@ -1672,6 +1672,90 @@ function testSupportMessagesKeepEveryAttachedPhoto() {
   console.log('✅ support messages keep every attached photo');
 }
 
+/**
+ * The admin side must mirror what a customer can already do: attach several
+ * pictures to one reply, and step through an album in the viewer instead of
+ * closing and reopening it image by image.
+ */
+function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const supportManagerSource = fs.readFileSync(
+    new URL('../src/components/SupportManager.tsx', import.meta.url),
+    'utf8',
+  );
+  const viewerSource = fs.readFileSync(
+    new URL('../src/components/ZoomableImageModal.tsx', import.meta.url),
+    'utf8',
+  );
+
+  const replyRoute = serverSource.slice(
+    serverSource.indexOf("app.post('/api/support/tickets/:id/reply'"),
+  ).slice(0, 5000);
+
+  // The reply must persist the whole set and stay valid with images only.
+  assert.ok(
+    /photos:\s*replyPhotos\.length \? replyPhotos : undefined/.test(replyRoute),
+    'An admin reply must persist every attached photo.',
+  );
+  assert.ok(
+    replyRoute.includes('!replyText && replyPhotos.length === 0'),
+    'A reply carrying only images must be accepted.',
+  );
+  // Telegram renders several pictures only as an album.
+  assert.ok(
+    /sendMediaGroup[\s\S]{0,400}media: albumReady\.map/.test(replyRoute),
+    'Several photos must reach the customer as one album.',
+  );
+  assert.ok(
+    replyRoute.includes('reply_markup: replyKeyboard'),
+    'The reply buttons must still reach the customer alongside the images.',
+  );
+
+  // The panel uploads the bytes first: Telegram cannot fetch a data URL.
+  assert.ok(
+    supportManagerSource.includes("fetch('/api/upload-image'"),
+    'Attached images must be uploaded so Telegram can fetch them.',
+  );
+  assert.ok(
+    /onReplyTicket\([\s\S]{0,120}replyPhotos\)/.test(supportManagerSource),
+    'The reply handler must forward the attached photos.',
+  );
+  assert.ok(
+    appSource.includes('photos: replyPhotos'),
+    'The reply request body must carry the photos.',
+  );
+
+  // The viewer steps through the set the opened image belongs to.
+  assert.ok(
+    viewerSource.includes('gallery?: string[]') && viewerSource.includes('onNavigate'),
+    'The viewer must accept the set the opened image belongs to.',
+  );
+  assert.ok(
+    viewerSource.includes("'ArrowLeft'") && viewerSource.includes("'ArrowRight'"),
+    'Arrow keys must step through the gallery.',
+  );
+  assert.ok(
+    /const nextIndex = \(galleryIndex \+ offset \+ total\) % total/.test(viewerSource),
+    'Stepping past the last image must wrap around.',
+  );
+  // The stage captures pointers; without this the arrows never receive a click.
+  const arrowGuards = viewerSource.match(
+    /onPointerDown=\{\(event\) => event\.stopPropagation\(\)\}[\s\S]{0,200}?showRelativeImage\(-?1\)/g,
+  );
+  assert.equal(
+    arrowGuards?.length,
+    2,
+    'Both gallery arrows must stop the pan gesture, or their clicks never land.',
+  );
+  assert.ok(
+    supportManagerSource.includes('gallery={previewGallery}'),
+    'Opening an image must hand its own album to the viewer.',
+  );
+
+  console.log('✅ admin replies carry several photos and the viewer browses them');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1692,6 +1776,7 @@ async function main() {
   await testBroadcastCanStartAReplyableConversation();
   await testTicketThreadKeepsEveryMessageAndItsRealSender();
   testSupportMessagesKeepEveryAttachedPhoto();
+  testAdminCanReplyWithSeveralPhotosAndBrowseThem();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

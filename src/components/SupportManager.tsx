@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   Headphones, 
   MessageSquare, 
@@ -19,7 +19,9 @@ import {
   Flame,
   Check,
   Plus,
-  Megaphone
+  Megaphone,
+  ImagePlus,
+  Loader2
 } from 'lucide-react';
 import { SupportTicket, TicketStatus, SupportCategory, BotSettings, Order, CustomPastryOrder, CustomerUser } from '../types';
 import { resolveTelegramImageSource } from '../utils/telegramImage';
@@ -35,13 +37,16 @@ interface SupportManagerProps {
   customers?: CustomerUser[];
   botSettings: BotSettings;
   onAddTicket: (ticket: Omit<SupportTicket, 'id' | 'ticketNumber' | 'createdAt' | 'updatedAt' | 'replies'>) => Promise<SupportTicket>;
-  onReplyTicket: (ticketId: string, replyText: string, senderName?: string) => Promise<void>;
+  onReplyTicket: (ticketId: string, replyText: string, senderName?: string, photos?: string[]) => Promise<void>;
   onUpdateTicketStatus: (ticketId: string, status: TicketStatus, priority?: 'low' | 'normal' | 'high') => Promise<void>;
   onDeleteTicket: (ticketId: string) => Promise<void>;
 }
 
 /** Backwards-compatible named export used by ticket image consumers/tests. */
 export const getTicketImageSource = resolveTelegramImageSource;
+
+/** Matches the limit the bot applies to a customer's own album. */
+const MAX_REPLY_PHOTOS = 10;
 
 interface TicketImageAttachmentProps {
   imageSources: string[];
@@ -147,6 +152,17 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
   const [showNewTicketModal, setShowNewTicketModal] = useState<boolean>(false);
   const [showBroadcast, setShowBroadcast] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [replyPhotos, setReplyPhotos] = useState<string[]>([]);
+  const [isUploadingReplyPhotos, setIsUploadingReplyPhotos] = useState(false);
+  const replyFileInputRef = useRef<HTMLInputElement>(null);
+  // The set the previewed image belongs to, so the viewer can step through the
+  // whole album of that one message instead of every image in the thread.
+  const [previewGallery, setPreviewGallery] = useState<string[]>([]);
+
+  const openPreview = (imageSources: string[]) => (imageSource: string) => {
+    setPreviewGallery(imageSources);
+    setPreviewImage(imageSource);
+  };
 
   // New ticket form state
   const [customerPickerQuery, setCustomerPickerQuery] = useState('');
@@ -265,12 +281,60 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
     },
   ];
 
+  /**
+   * Uploads a picture and returns the URL Telegram can fetch. A data URL would
+   * not be reachable by Telegram's servers, so the bytes are stored first.
+   */
+  const uploadReplyImage = async (file: File): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+        credentials: 'include',
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.url) {
+        alert(body?.error || 'بارگذاری تصویر ناموفق بود.');
+        return null;
+      }
+      return body.url as string;
+    } catch {
+      alert('بارگذاری تصویر ناموفق بود.');
+      return null;
+    }
+  };
+
+  const handleReplyFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (images.length === 0) {
+      alert('لطفاً فقط فایل تصویری انتخاب کنید.');
+      return;
+    }
+    setIsUploadingReplyPhotos(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of images) {
+        if (replyPhotos.length + uploaded.length >= MAX_REPLY_PHOTOS) break;
+        const url = await uploadReplyImage(file);
+        if (url) uploaded.push(url);
+      }
+      if (uploaded.length) setReplyPhotos((prev) => [...prev, ...uploaded].slice(0, MAX_REPLY_PHOTOS));
+    } finally {
+      setIsUploadingReplyPhotos(false);
+    }
+  };
+
   const handleSendReply = async () => {
-    if (!selectedTicket || !replyInput.trim() || isSendingReply) return;
+    if (!selectedTicket || isSendingReply) return;
+    // A picture on its own is a valid answer, so text is not required.
+    if (!replyInput.trim() && replyPhotos.length === 0) return;
     setIsSendingReply(true);
     try {
-      await onReplyTicket(selectedTicket.id, replyInput.trim(), 'مدیریت قنادی شیرین‌کام');
+      await onReplyTicket(selectedTicket.id, replyInput.trim(), 'مدیریت قنادی شیرین‌کام', replyPhotos);
       setReplyInput('');
+      setReplyPhotos([]);
     } catch (e) {
       console.error('Failed to send reply:', e);
     } finally {
@@ -695,15 +759,20 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           <span>{new Date(selectedTicket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         {selectedTicket.message && <p className="whitespace-pre-line">{selectedTicket.message}</p>}
-                        <TicketImageAttachment
-                          imageSources={collectTicketImageSources(
+                        {(() => {
+                          const openingImages = collectTicketImageSources(
                             selectedTicket.cakePhotos,
                             selectedTicket.cakePhoto,
-                          )}
-                          sender={openedByAdmin ? 'admin' : 'customer'}
-                          senderName={openerName}
-                          onPreview={setPreviewImage}
-                        />
+                          );
+                          return (
+                            <TicketImageAttachment
+                              imageSources={openingImages}
+                              sender={openedByAdmin ? 'admin' : 'customer'}
+                              senderName={openerName}
+                              onPreview={openPreview(openingImages)}
+                            />
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -746,7 +815,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           imageSources={imageSources}
                           sender={reply.sender}
                           senderName={reply.senderName}
-                          onPreview={setPreviewImage}
+                          onPreview={openPreview(imageSources)}
                         />
                       </div>
                     </div>
@@ -776,7 +845,52 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
 
               {/* Reply Input Box */}
               <div className="p-3 bg-slate-900 border-t border-slate-800 rounded-b-2xl">
+                {replyPhotos.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {replyPhotos.map((photo, index) => (
+                      <div key={`${photo}-${index}`} className="relative">
+                        <img
+                          src={photo}
+                          alt={`تصویر پیوست ${index + 1}`}
+                          className="h-14 w-14 rounded-lg border border-slate-700 object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setReplyPhotos((prev) => prev.filter((_, i) => i !== index))}
+                          className="absolute -top-1.5 -right-1.5 rounded-full bg-rose-600 p-0.5 text-white shadow hover:bg-rose-500"
+                          aria-label={`حذف تصویر ${index + 1}`}
+                          title="حذف تصویر"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    <span className="self-end text-[10px] text-slate-500">
+                      {replyPhotos.length.toLocaleString('fa-IR')} از {MAX_REPLY_PHOTOS.toLocaleString('fa-IR')}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
+                  <input
+                    ref={replyFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { handleReplyFiles(e.target.files); e.target.value = ''; }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => replyFileInputRef.current?.click()}
+                    disabled={isUploadingReplyPhotos || replyPhotos.length >= MAX_REPLY_PHOTOS}
+                    className="px-3 py-3 bg-slate-950 border border-slate-800 hover:border-purple-500/60 hover:text-purple-200 disabled:opacity-40 text-slate-300 rounded-xl transition shrink-0"
+                    title={replyPhotos.length >= MAX_REPLY_PHOTOS ? 'به حداکثر تعداد تصویر رسیدید' : 'افزودن عکس (می‌توانید چند عکس را با هم انتخاب کنید)'}
+                    aria-label="افزودن عکس به پاسخ"
+                  >
+                    {isUploadingReplyPhotos
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <ImagePlus className="w-4 h-4" />}
+                  </button>
                   <textarea
                     rows={2}
                     value={replyInput}
@@ -793,7 +907,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <button
                     type="button"
                     onClick={handleSendReply}
-                    disabled={!replyInput.trim() || isSendingReply}
+                    disabled={(!replyInput.trim() && replyPhotos.length === 0) || isSendingReply || isUploadingReplyPhotos}
                     className="px-4 py-3 bg-gradient-to-r from-purple-600 to-sky-600 hover:from-purple-500 hover:to-sky-500 disabled:opacity-50 text-white rounded-xl font-bold text-xs transition shadow-lg shadow-purple-600/20 flex items-center justify-center gap-1.5 shrink-0"
                   >
                     <Send className="w-4 h-4" />
@@ -828,7 +942,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
                   {/* Makes a stale deployment obvious at a glance. */}
                   <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
-                    v2026-09-21-multi-photo-v2
+                    v2026-09-21-admin-photos-gallery
                   </p>
                 </div>
               </div>
@@ -1009,7 +1123,9 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
 
       <ZoomableImageModal
         imageSrc={previewImage}
-        onClose={() => setPreviewImage(null)}
+        gallery={previewGallery}
+        onNavigate={setPreviewImage}
+        onClose={() => { setPreviewImage(null); setPreviewGallery([]); }}
         alt="تصویر ارسال‌شده در تیکت"
         title="تصویر ارسال‌شده در تیکت"
         description="با دکمه‌های بزرگ‌نمایی و کوچک‌نمایی جزئیات تصویر را بررسی کنید."

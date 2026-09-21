@@ -487,12 +487,20 @@ export default function App() {
     return tempTicket;
   };
 
-  const handleReplySupportTicket = async (ticketId: string, replyText: string, senderName?: string) => {
+  const handleReplySupportTicket = async (
+    ticketId: string,
+    replyText: string,
+    senderName?: string,
+    photos?: string[],
+  ) => {
+    const replyPhotos = (photos || []).filter((photo) => photo.trim().length > 0);
     const newReply = {
       id: `rep-${Date.now()}`,
       sender: 'admin' as const,
       senderName: senderName || 'مدیریت قنادی',
       text: replyText,
+      photo: replyPhotos[0],
+      photos: replyPhotos.length ? replyPhotos : undefined,
       createdAt: new Date().toISOString()
     };
 
@@ -516,7 +524,8 @@ export default function App() {
         body: JSON.stringify({
           text: replyText,
           sender: 'admin',
-          senderName: senderName || 'مدیریت قنادی'
+          senderName: senderName || 'مدیریت قنادی',
+          photos: replyPhotos,
         })
       });
     } catch (e) {

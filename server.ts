@@ -589,7 +589,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-21-multi-photo-v2';
+const APP_REVISION = '2026-09-21-admin-photos-gallery';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -1411,8 +1411,18 @@ async function startServer() {
     const { id } = req.params;
     const { text, sender, senderName } = req.body;
 
-    if (!text || !text.trim()) {
-      res.status(400).json({ error: 'متن پاسخ نمی‌تواند خالی باشد' });
+    // An admin may answer with pictures only (a photo of the finished cake),
+    // so a reply is valid when it carries either text or at least one image.
+    const replyPhotos: string[] = Array.isArray(req.body.photos)
+      ? req.body.photos
+          .map((photo: unknown) => (typeof photo === 'string' ? photo.trim() : ''))
+          .filter((photo: string) => photo.length > 0)
+          .slice(0, 10)
+      : [];
+    const replyText = typeof text === 'string' ? text.trim() : '';
+
+    if (!replyText && replyPhotos.length === 0) {
+      res.status(400).json({ error: 'متن پاسخ یا حداقل یک تصویر لازم است' });
       return;
     }
 
@@ -1427,7 +1437,9 @@ async function startServer() {
       id: `rep-${Date.now()}`,
       sender: (sender || 'admin') as 'admin' | 'customer',
       senderName: senderName || (isFromAdmin ? 'مدیریت قنادی' : supportTickets[ticketIndex].customerName),
-      text: text.trim(),
+      text: replyText,
+      photo: replyPhotos[0],
+      photos: replyPhotos.length ? replyPhotos : undefined,
       createdAt: new Date().toISOString()
     };
 
@@ -1443,21 +1455,80 @@ async function startServer() {
     // If admin replied and user has telegram ID and live bot is active, send telegram message
     if (isFromAdmin && getTelegramBotToken() && supportTickets[ticketIndex].customerTelegramId && supportTickets[ticketIndex].customerTelegramId !== 'guest') {
       try {
-        await fetch(`https://api.telegram.org/bot${getTelegramBotToken()}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: supportTickets[ticketIndex].customerTelegramId,
-            text: `👩‍🍳 <b>پاسخ پشتیبانی قنادی شیرین‌کام (تیکت ${supportTickets[ticketIndex].ticketNumber}):</b>\n\n${text.trim()}\n\n<i>در صورت نیاز به توضیحات بیشتر می‌توانید پاسخ دهید یا بیخیال شوید.</i>`,
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '💬 پاسخ به این تیکت', callback_data: `reply_ticket_${supportTickets[ticketIndex].id}` }],
-                [{ text: '✅ بیخیال', callback_data: 'back_to_main' }]
-              ]
-            }
-          })
-        });
+        const botToken = getTelegramBotToken();
+        const chatId = supportTickets[ticketIndex].customerTelegramId;
+        const caption = `👩‍🍳 <b>پاسخ پشتیبانی قنادی شیرین‌کام (تیکت ${supportTickets[ticketIndex].ticketNumber}):</b>${replyText ? `\n\n${replyText}` : ''}`;
+        const followUp = '<i>در صورت نیاز به توضیحات بیشتر می‌توانید پاسخ دهید یا بیخیال شوید.</i>';
+        const replyKeyboard = {
+          inline_keyboard: [
+            [{ text: '💬 پاسخ به این تیکت', callback_data: `reply_ticket_${supportTickets[ticketIndex].id}` }],
+            [{ text: '✅ بیخیال', callback_data: 'back_to_main' }]
+          ]
+        };
+
+        // Telegram shows several pictures only through sendMediaGroup, and an
+        // album cannot carry inline buttons, so the keyboard follows it in a
+        // separate message. Base64 data URLs are not addressable inside a media
+        // group, so those fall back to one sendPhoto per image.
+        const albumReady = replyPhotos.filter((photo) => !photo.startsWith('data:'));
+        const useAlbum = replyPhotos.length > 1 && albumReady.length === replyPhotos.length;
+
+        if (useAlbum) {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMediaGroup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              media: albumReady.map((photo, index) => ({
+                type: 'photo',
+                media: photo,
+                ...(index === 0 ? { caption, parse_mode: 'HTML' } : {}),
+              })),
+            })
+          });
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: followUp, parse_mode: 'HTML', reply_markup: replyKeyboard })
+          });
+        } else if (replyPhotos.length === 1) {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              photo: replyPhotos[0],
+              caption: `${caption}\n\n${followUp}`,
+              parse_mode: 'HTML',
+              reply_markup: replyKeyboard,
+            })
+          });
+        } else if (replyPhotos.length > 1) {
+          // Mixed/base64 set: send each picture, then the buttons once.
+          for (const photo of replyPhotos) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: chatId, photo, parse_mode: 'HTML' })
+            });
+          }
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: `${caption}\n\n${followUp}`, parse_mode: 'HTML', reply_markup: replyKeyboard })
+          });
+        } else {
+          await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `${caption}\n\n${followUp}`,
+              parse_mode: 'HTML',
+              reply_markup: replyKeyboard,
+            })
+          });
+        }
       } catch (err) {
         console.error('Failed to send telegram direct reply:', err);
       }
@@ -1467,7 +1538,8 @@ async function startServer() {
     if (isFromAdmin) {
       sendToTelegramTopic(
         'support',
-        `✅ <b>پاسخ به تیکت ${supportTickets[ticketIndex].ticketNumber} ارسال شد:</b>\n\n👤 مشتری: ${supportTickets[ticketIndex].customerName}\n✍️ <b>متن پاسخ ادمین:</b>\n${text.trim()}`
+        `✅ <b>پاسخ به تیکت ${supportTickets[ticketIndex].ticketNumber} ارسال شد:</b>\n\n👤 مشتری: ${supportTickets[ticketIndex].customerName}\n✍️ <b>متن پاسخ ادمین:</b>\n${replyText || '(بدون متن)'}`,
+        replyPhotos.length ? replyPhotos : undefined
       );
     }
 

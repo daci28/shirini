@@ -1762,6 +1762,43 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
  * Images the shop attaches must be reachable by two different consumers: the
  * browser rendering the panel, and Telegram fetching them from its own servers.
  */
+function testSingleCustomerMessageIsNotReportedAsABroadcast() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  const routeStart = serverSource.indexOf("app.post('/api/telegram/broadcast'");
+  assert.ok(routeStart !== -1, 'The broadcast route must exist.');
+  const route = serverSource.slice(routeStart, serverSource.indexOf('app.', routeStart + 40));
+
+  // Messaging one customer from the panel used to be logged in the group as
+  // "ارسال پیام گروهی", which read as if every customer had been contacted.
+  assert.ok(
+    /recipients\.length === 1/.test(route),
+    'The report must distinguish a single recipient from a real broadcast.',
+  );
+  assert.ok(
+    route.includes('ارسال پیام به مشتری'),
+    'Messaging one customer must be reported as a message to that customer.',
+  );
+  assert.ok(
+    route.includes('ارسال پیام گروهی'),
+    'A real broadcast must still be reported as a broadcast.',
+  );
+
+  // The single-recipient report should name the customer rather than repeat an
+  // audience label, and must not claim success when nothing was delivered.
+  const singleBranch = route.slice(route.indexOf('const isSingleRecipient'));
+  assert.ok(
+    /👤 مشتری: \$\{escapeTelegramHtml\(recipients\[0\]\.name/.test(singleBranch),
+    'The single-recipient report must name the customer.',
+  );
+  assert.ok(
+    /sentCount \? '✅ ارسال شد' : '⚠️ ارسال نشد'/.test(singleBranch),
+    'A failed single send must not be reported as delivered.',
+  );
+
+  console.log('✅ messaging one customer is not logged as a group broadcast');
+}
+
 function testJustUploadedPicturePreviewsImmediately() {
   const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
 
@@ -2059,6 +2096,7 @@ async function main() {
   testAdminCanReplyWithSeveralPhotosAndBrowseThem();
   testShopAttachedImagesAreReachable();
   testJustUploadedPicturePreviewsImmediately();
+  testSingleCustomerMessageIsNotReportedAsABroadcast();
   testUploadsReportTheirProgress();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();

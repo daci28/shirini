@@ -732,7 +732,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-22-fix-upload-preview-thumbnail';
+const APP_REVISION = '2026-09-22-single-customer-message-report';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -3141,11 +3141,16 @@ async function startServer() {
     if (broadcasts.length > 200) broadcasts = broadcasts.slice(-200);
     saveAllData();
 
-    sendToTelegramTopic(
-      'customers',
-      `📣 <b>ارسال پیام گروهی</b>\n\n🎯 مخاطب: ${escapeTelegramHtml(label)}\n✅ ارسال موفق: <b>${sentCount}</b> از <b>${recipients.length}</b>` +
-        (failures.length ? `\n⚠️ ناموفق: <b>${failures.length}</b>` : '')
-    );
+    // Messaging one customer from the panel is not a broadcast; reporting it as
+    // one made the group log read as if everyone had been contacted.
+    const isSingleRecipient = recipients.length === 1;
+    const reportTitle = isSingleRecipient ? '📩 <b>ارسال پیام به مشتری</b>' : '📣 <b>ارسال پیام گروهی</b>';
+    const reportBody = isSingleRecipient
+      ? `\n\n👤 مشتری: ${escapeTelegramHtml(recipients[0].name || label)}\n${sentCount ? '✅ ارسال شد' : '⚠️ ارسال نشد'}`
+      : `\n\n🎯 مخاطب: ${escapeTelegramHtml(label)}\n✅ ارسال موفق: <b>${sentCount}</b> از <b>${recipients.length}</b>`
+        + (failures.length ? `\n⚠️ ناموفق: <b>${failures.length}</b>` : '');
+
+    sendToTelegramTopic('customers', `${reportTitle}${reportBody}`);
 
     res.json({
       success: true,

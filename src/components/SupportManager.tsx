@@ -839,7 +839,13 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                         <img
                           src={photo}
                           alt={`تصویر پیوست ${index + 1}`}
-                          className="h-14 w-14 rounded-lg border border-slate-700 object-cover"
+                          className="h-14 w-14 rounded-lg border border-slate-700 object-cover bg-slate-800"
+                          loading="lazy"
+                          onError={(e) => {
+                            // A broken thumbnail must not leave the alt text
+                            // sprawling over the composer.
+                            e.currentTarget.classList.add('opacity-40');
+                          }}
                         />
                         <button
                           type="button"

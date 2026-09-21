@@ -572,6 +572,36 @@ function relativiseStoredTicketImages(): void {
 
 }
 
+/**
+ * Pictures that were just uploaded from the panel but are not attached to a
+ * product or ticket yet. The public image route only serves referenced files,
+ * so without this the preview thumbnail of a picture the admin just picked
+ * would 404 until the reply was actually sent.
+ *
+ * Entries are only honoured for a signed-in panel session and expire on their
+ * own, so this never widens what an anonymous visitor can fetch.
+ */
+const recentlyUploadedImages = new Map<string, number>();
+const RECENT_UPLOAD_TTL_MS = 12 * 60 * 60 * 1000;
+
+function rememberUploadedImage(filename: string): void {
+  const now = Date.now();
+  for (const [name, storedAt] of recentlyUploadedImages) {
+    if (now - storedAt > RECENT_UPLOAD_TTL_MS) recentlyUploadedImages.delete(name);
+  }
+  recentlyUploadedImages.set(filename, now);
+}
+
+function isRecentlyUploadedImage(filename: string): boolean {
+  const storedAt = recentlyUploadedImages.get(filename);
+  if (storedAt === undefined) return false;
+  if (Date.now() - storedAt > RECENT_UPLOAD_TTL_MS) {
+    recentlyUploadedImages.delete(filename);
+    return false;
+  }
+  return true;
+}
+
 function isReferencedTicketImage(filename: string, route: PublicProductImageRoute): boolean {
   return supportTickets.some((ticket) => {
     const references = [
@@ -702,7 +732,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-21-upload-progress-all-screens';
+const APP_REVISION = '2026-09-22-fix-upload-preview-thumbnail';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -811,7 +841,16 @@ async function startServer() {
     allowProtectedFallback: boolean,
   ) => (req: Request, res: Response, next: NextFunction) => {
     const filename = safeProductImageFilename(req.params.filename);
-    if (!filename || !(isReferencedProductImage(filename, route) || isReferencedTicketImage(filename, route))) {
+    // A picture the admin just uploaded has no owner yet; show it to that
+    // signed-in admin so the preview thumbnail works before the reply is sent.
+    const isPendingUpload =
+      !!filename && isRecentlyUploadedImage(filename) && !!getPanelSession(req);
+    if (
+      !filename
+      || !(isReferencedProductImage(filename, route)
+        || isReferencedTicketImage(filename, route)
+        || isPendingUpload)
+    ) {
       if (allowProtectedFallback) return next();
       res.status(404).end();
       return;
@@ -896,6 +935,7 @@ async function startServer() {
       const filename = `${imageId}.${ext}`;
       fs.mkdirSync(PRODUCT_IMAGE_DIR, { recursive: true });
       fs.writeFileSync(path.join(PRODUCT_IMAGE_DIR, filename), imageData);
+      rememberUploadedImage(filename);
 
       // A root-relative path, so the stored value never freezes the host the
       // panel happened to be opened on (localhost during a tunnel/preview, or a

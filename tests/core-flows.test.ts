@@ -1762,13 +1762,52 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
  * Images the shop attaches must be reachable by two different consumers: the
  * browser rendering the panel, and Telegram fetching them from its own servers.
  */
+function testJustUploadedPicturePreviewsImmediately() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  // The public image route only serves files a product or ticket already
+  // points at. A picture the admin just picked is attached to nothing yet, so
+  // without an explicit allowance its preview thumbnail 404s and the panel
+  // shows a broken image instead of the scaled-down picture.
+  assert.ok(
+    /rememberUploadedImage\(filename\);/.test(serverSource),
+    'A freshly uploaded picture must be recorded so it can be previewed.',
+  );
+
+  const routeStart = serverSource.indexOf('const servePublicProductImage =');
+  const routeEnd = serverSource.indexOf("app.get('/product-images/:filename'", routeStart);
+  const route = serverSource.slice(routeStart, routeEnd);
+  assert.ok(routeStart !== -1 && routeEnd > routeStart, 'The image route must exist.');
+  assert.ok(
+    /isRecentlyUploadedImage\(filename\)/.test(route),
+    'The image route must serve a picture that was just uploaded.',
+  );
+
+  // It must stay private: only the signed-in admin may see an unattached file,
+  // otherwise this turns into an open file host.
+  assert.ok(
+    /isRecentlyUploadedImage\(filename\)\s*&&\s*!!getPanelSession\(req\)/.test(route),
+    'An unattached picture must only be served to a signed-in panel session.',
+  );
+
+  // The allowance has to expire rather than growing without bound.
+  assert.ok(
+    /RECENT_UPLOAD_TTL_MS/.test(serverSource)
+      && /now - storedAt > RECENT_UPLOAD_TTL_MS/.test(serverSource),
+    'The pending-upload allowance must expire.',
+  );
+
+  console.log('✅ a just-uploaded picture previews as a thumbnail right away');
+}
+
 function testShopAttachedImagesAreReachable() {
   const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
 
   // The public route served product photos only, so a ticket image 404'd.
+  // Checked independently of formatting: both owners must be consulted.
   assert.ok(
-    /isReferencedProductImage\(filename, route\) \|\| isReferencedTicketImage\(filename, route\)/
-      .test(serverSource),
+    /isReferencedProductImage\(filename, route\)/.test(serverSource)
+      && /isReferencedTicketImage\(filename, route\)/.test(serverSource),
     'Images attached to a ticket must be served, not only product photos.',
   );
 
@@ -2019,6 +2058,7 @@ async function main() {
   testSupportMessagesKeepEveryAttachedPhoto();
   testAdminCanReplyWithSeveralPhotosAndBrowseThem();
   testShopAttachedImagesAreReachable();
+  testJustUploadedPicturePreviewsImmediately();
   testUploadsReportTheirProgress();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();

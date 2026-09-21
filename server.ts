@@ -589,7 +589,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-20-multi-photo-tickets';
+const APP_REVISION = '2026-09-21-multi-photo-v2';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -4957,8 +4957,8 @@ async function startServer() {
             body: JSON.stringify({
               chat_id: chatId,
               text: atLimit
-                ? `✅ تصویر دریافت شد. مجموعاً <b>${count.toLocaleString('fa-IR')}</b> عکس (حداکثر مجاز) ثبت شد.\n\nمی‌توانید «✅ ثبت عکس‌ها» را بزنید تا خلاصه سفارش نمایش داده شود.`
-                : `✅ تصویر <b>${count.toLocaleString('fa-IR')}</b> دریافت شد.\n\n📸 اگر مدل یا طرح دیگری هم دارید، <b>همین حالا عکس بعدی</b> را بفرستید.\nپس از اتمام، دکمه «✅ ثبت عکس‌ها و ادامه» را بزنید.`,
+                ? `✅ مجموعاً <b>${count.toLocaleString('fa-IR')}</b> عکس (حداکثر مجاز) ثبت شد.\n\nمی‌توانید «✅ ثبت عکس‌ها» را بزنید تا خلاصه سفارش نمایش داده شود.`
+                : `✅ <b>${count.toLocaleString('fa-IR')}</b> عکس دریافت شد.\n\n📸 اگر مدل یا طرح دیگری هم دارید، <b>همین حالا عکس بعدی</b> را بفرستید.\nپس از اتمام، دکمه «✅ ثبت عکس‌ها و ادامه» را بزنید.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
                 [{ text: '✅ ثبت عکس‌ها و ادامه', callback_data: 'custom_product_done_photos' }],
@@ -4972,6 +4972,12 @@ async function startServer() {
         // this bot and is resolved by the relative file proxy in the web panel;
         // unlike a generated Railway URL it survives domain configuration changes.
         const supportPhotoState = userStates.get(chatId);
+        // Many customers answer "do you want to attach an image?" by simply
+        // sending the pictures instead of tapping the button first, so treat
+        // an incoming photo as entering the photo step.
+        if (supportPhotoState && supportPhotoState.mode === 'support_photo_ask') {
+          supportPhotoState.mode = 'support_photo';
+        }
         if (supportPhotoState && supportPhotoState.mode === 'support_photo') {
           // Customers often attach several pictures of the same problem, either
           // as one album or one after another. Collect them all instead of
@@ -4998,7 +5004,7 @@ async function startServer() {
               chat_id: chatId,
               text: supportAtLimit
                 ? `✅ مجموعاً <b>${supportPhotoCount.toLocaleString('fa-IR')}</b> تصویر (حداکثر مجاز) دریافت شد.\n\nبرای ادامه «✅ ثبت نهایی تیکت» را بزنید.`
-                : `✅ تصویر <b>${supportPhotoCount.toLocaleString('fa-IR')}</b> دریافت شد.\n\n📸 اگر تصویر دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت نهایی تیکت» را بزنید.`,
+                : `✅ <b>${supportPhotoCount.toLocaleString('fa-IR')}</b> تصویر دریافت شد.\n\n📸 اگر تصویر دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت نهایی تیکت» را بزنید.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
                 [{ text: '✅ ثبت نهایی تیکت', callback_data: 'support_finalize' }],
@@ -5011,6 +5017,9 @@ async function startServer() {
         // Handle reply ticket photo upload. Store its Telegram file_id directly
         // so it can be rendered through /api/telegram/file on any Railway host.
         const replyPhotoState = userStates.get(chatId);
+        if (replyPhotoState && replyPhotoState.mode === 'reply_to_ticket_photo_ask' && replyPhotoState.ticketId) {
+          replyPhotoState.mode = 'reply_to_ticket_photo';
+        }
         if (replyPhotoState && replyPhotoState.mode === 'reply_to_ticket_photo') {
           const ticket = supportTickets.find(t => t.id === replyPhotoState.ticketId);
           if (ticket) {
@@ -5036,7 +5045,7 @@ async function startServer() {
                 chat_id: chatId,
                 text: replyAtLimit
                   ? `✅ مجموعاً <b>${replyPhotoCount.toLocaleString('fa-IR')}</b> عکس (حداکثر مجاز) دریافت شد.\n\nبرای ارسال پاسخ «✅ ثبت و ارسال پاسخ» را بزنید.`
-                  : `✅ عکس <b>${replyPhotoCount.toLocaleString('fa-IR')}</b> دریافت شد.\n\n📸 اگر عکس دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت و ارسال پاسخ» را بزنید.`,
+                  : `✅ <b>${replyPhotoCount.toLocaleString('fa-IR')}</b> عکس دریافت شد.\n\n📸 اگر عکس دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت و ارسال پاسخ» را بزنید.`,
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [
                   [{ text: '✅ ثبت و ارسال پاسخ', callback_data: 'reply_ticket_photo_done' }],

@@ -1652,6 +1652,23 @@ function testSupportMessagesKeepEveryAttachedPhoto() {
     'Reply bubbles must render every attached image.',
   );
 
+  // Customers frequently answer "do you want to attach an image?" by sending
+  // the photos instead of tapping the button, which used to discard them.
+  assert.ok(
+    serverSource.includes("supportPhotoState.mode === 'support_photo_ask'"),
+    'Photos sent without tapping the button must still be collected on a new ticket.',
+  );
+  assert.ok(
+    serverSource.includes("replyPhotoState.mode === 'reply_to_ticket_photo_ask'"),
+    'Photos sent without tapping the button must still be collected on a reply.',
+  );
+
+  // "2 photos received", not "photo 2 received".
+  assert.ok(
+    /\$\{supportPhotoCount\.toLocaleString\('fa-IR'\)\}<\/b> تصویر دریافت شد/.test(serverSource),
+    'The acknowledgment must read as a count of photos, not an index.',
+  );
+
   console.log('✅ support messages keep every attached photo');
 }
 

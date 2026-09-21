@@ -828,7 +828,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                   <h3 className="font-bold text-white text-base">ثبت پیام یا تیکت پشتیبانی جدید</h3>
                   {/* Makes a stale deployment obvious at a glance. */}
                   <p className="text-[9px] text-slate-500 font-mono" dir="ltr">
-                    v2026-09-20-multi-photo-tickets
+                    v2026-09-21-multi-photo-v2
                   </p>
                 </div>
               </div>

@@ -1689,9 +1689,11 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
     'utf8',
   );
 
+  const replyRouteStart = serverSource.indexOf("app.post('/api/support/tickets/:id/reply'");
   const replyRoute = serverSource.slice(
-    serverSource.indexOf("app.post('/api/support/tickets/:id/reply'"),
-  ).slice(0, 5000);
+    replyRouteStart,
+    serverSource.indexOf("app.put('/api/support/tickets/:id/status'", replyRouteStart),
+  );
 
   // The reply must persist the whole set and stay valid with images only.
   assert.ok(
@@ -1708,8 +1710,8 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
     'Several photos must reach the customer as one album.',
   );
   assert.ok(
-    replyRoute.includes('reply_markup: replyKeyboard'),
-    'The reply buttons must still reach the customer alongside the images.',
+    (replyRoute.match(/reply_markup: replyKeyboard/g) || []).length >= 3,
+    'The reply buttons must still reach the customer on every delivery path.',
   );
 
   // The panel uploads the bytes first: Telegram cannot fetch a data URL.
@@ -1756,6 +1758,55 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
   console.log('✅ admin replies carry several photos and the viewer browses them');
 }
 
+/**
+ * Images the shop attaches must be reachable by two different consumers: the
+ * browser rendering the panel, and Telegram fetching them from its own servers.
+ */
+function testShopAttachedImagesAreReachable() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+
+  // The public route served product photos only, so a ticket image 404'd.
+  assert.ok(
+    /isReferencedProductImage\(filename, route\) \|\| isReferencedTicketImage\(filename, route\)/
+      .test(serverSource),
+    'Images attached to a ticket must be served, not only product photos.',
+  );
+
+  // Storing an absolute URL freezes the host the admin happened to be on.
+  const uploadRoute = serverSource.slice(serverSource.indexOf("app.post('/api/upload-image'")).slice(0, 2000);
+  assert.ok(
+    uploadRoute.includes('url: `/product-images/'),
+    'An upload must be stored as a relative path, not a host-specific URL.',
+  );
+  assert.doesNotMatch(
+    uploadRoute,
+    /\$\{protocol\}:\/\/\$\{host\}/,
+    'The stored path must not bake in the request host.',
+  );
+
+  // Telegram cannot fetch a relative path or a loopback address.
+  assert.ok(
+    serverSource.includes('function toPubliclyFetchableUrl'),
+    'A relative path must be resolved before it is handed to Telegram.',
+  );
+  assert.ok(
+    /localhost|127\\./.test(serverSource.slice(serverSource.indexOf('function toPubliclyFetchableUrl')).slice(0, 1600)),
+    'A loopback host must be rejected instead of sent to Telegram as a dead link.',
+  );
+  assert.ok(
+    serverSource.includes('const sendLocalPhoto ='),
+    'Without a public host the bytes must be uploaded to Telegram directly.',
+  );
+
+  // The repair must run after the filename constants exist; a `const` is in its
+  // temporal dead zone earlier and the helper's catch swallowed the error.
+  const repairCallIndex = serverSource.indexOf('relativiseStoredTicketImages();');
+  const patternIndex = serverSource.indexOf('const PRODUCT_IMAGE_FILENAME_PATTERN');
+  assert.ok(repairCallIndex > patternIndex, 'The image repair must run after its constants are initialised.');
+
+  console.log('✅ shop-attached images are reachable by the panel and Telegram');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1777,6 +1828,7 @@ async function main() {
   await testTicketThreadKeepsEveryMessageAndItsRealSender();
   testSupportMessagesKeepEveryAttachedPhoto();
   testAdminCanReplyWithSeveralPhotosAndBrowseThem();
+  testShopAttachedImagesAreReachable();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

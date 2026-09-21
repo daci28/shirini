@@ -346,6 +346,7 @@ if (persistedData) {
   if (repairedTickets > 0) {
     console.log(`[startup] repaired ${repairedTickets} ticket(s) whose first reply was hidden in the panel`);
   }
+
   console.log("Loaded persisted data");
 }
 
@@ -487,6 +488,104 @@ function isReferencedProductImage(filename: string, route: PublicProductImageRou
   });
 }
 
+/**
+ * Images the shop attached to a support message live in the same public folder:
+ * Telegram fetches them by URL without the admin cookie, exactly like product
+ * photos. Only files actually referenced by a ticket are served.
+ */
+/**
+ * Telegram fetches an image from its own servers, so a relative path or a
+ * loopback host is unusable: it must be an address reachable from the public
+ * internet. Returns null when no such address is known, letting the caller
+ * fall back to uploading the bytes instead of sending a dead link.
+ */
+function toPubliclyFetchableUrl(reference: string, req?: Request): string | null {
+  const value = reference.trim();
+  if (!value) return null;
+  if (value.startsWith('data:')) return null;
+
+  const explicitBase = String(
+    process.env.PUBLIC_BASE_URL
+      || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : ''),
+  ).trim().replace(/\/+$/, '');
+
+  const isPrivateHost = (hostname: string): boolean =>
+    /^(localhost|127\.|0\.0\.0\.0$|\[?::1\]?$|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(hostname);
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      return isPrivateHost(new URL(value).hostname) ? null : value;
+    } catch {
+      return null;
+    }
+  }
+
+  if (!value.startsWith('/')) return null;
+
+  const candidateBases = [
+    explicitBase,
+    req ? `${req.protocol || 'https'}://${req.get('host') || ''}` : '',
+  ].filter((base) => base && !base.endsWith('://'));
+
+  for (const base of candidateBases) {
+    try {
+      const url = new URL(value, base);
+      if (!isPrivateHost(url.hostname)) return url.toString();
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * Rewrites ticket images that were stored as an absolute URL into a relative
+ * path. The absolute form froze whatever host the admin was on, so the images
+ * broke on every other host. Must run after the filename constants exist.
+ */
+function relativiseStoredTicketImages(): void {
+  // Images attached from the panel used to be stored with the absolute URL of
+  // whatever host the admin happened to be on. Those break as soon as the host
+  // differs (a local run, a renamed deployment). Reduce them to the relative
+  // path, which always resolves against the host actually serving the panel.
+  let repairedImages = 0;
+  const toRelativeProductImage = (reference?: string): string | undefined => {
+    if (!reference || !/^https?:\/\//i.test(reference)) return reference;
+    const filename = productImageFilename(reference, 'product-images');
+    if (!filename) return reference;
+    repairedImages++;
+    return `/product-images/${encodeURIComponent(filename)}`;
+  };
+  for (const ticket of supportTickets) {
+    ticket.cakePhoto = toRelativeProductImage(ticket.cakePhoto);
+    if (Array.isArray(ticket.cakePhotos)) {
+      ticket.cakePhotos = ticket.cakePhotos.map((photo) => toRelativeProductImage(photo) as string);
+    }
+    for (const reply of ticket.replies) {
+      reply.photo = toRelativeProductImage(reply.photo);
+      if (Array.isArray(reply.photos)) {
+        reply.photos = reply.photos.map((photo) => toRelativeProductImage(photo) as string);
+      }
+    }
+  }
+  if (repairedImages > 0) {
+    console.log(`[startup] rewrote ${repairedImages} ticket image link(s) that pointed at a fixed host`);
+  }
+
+}
+
+function isReferencedTicketImage(filename: string, route: PublicProductImageRoute): boolean {
+  return supportTickets.some((ticket) => {
+    const references = [
+      ticket.cakePhoto,
+      ...(Array.isArray(ticket.cakePhotos) ? ticket.cakePhotos : []),
+      ...ticket.replies.flatMap((reply) => [
+        reply.photo,
+        ...(Array.isArray(reply.photos) ? reply.photos : []),
+      ]),
+    ];
+    return references.some((reference) => productImageFilename(reference, route) === filename);
+  });
+}
+
 function getTelegramProfile(telegramUser?: any): { username?: string; displayName?: string } {
   const fullName = [telegramUser?.first_name, telegramUser?.last_name].filter(Boolean).join(' ').trim();
   return {
@@ -589,7 +688,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-21-admin-photos-gallery';
+const APP_REVISION = '2026-09-21-fix-ticket-image-urls';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -698,7 +797,7 @@ async function startServer() {
     allowProtectedFallback: boolean,
   ) => (req: Request, res: Response, next: NextFunction) => {
     const filename = safeProductImageFilename(req.params.filename);
-    if (!filename || !isReferencedProductImage(filename, route)) {
+    if (!filename || !(isReferencedProductImage(filename, route) || isReferencedTicketImage(filename, route))) {
       if (allowProtectedFallback) return next();
       res.status(404).end();
       return;
@@ -722,6 +821,8 @@ async function startServer() {
   // Telegram Bot API cannot send the admin's HttpOnly cookie when it fetches a
   // photo URL. New product uploads use this intentionally public, product-only
   // route; customer/private files remain behind /data authentication.
+  relativiseStoredTicketImages();
+
   app.get('/product-images/:filename', servePublicProductImage('product-images', false));
   // Continue serving product images saved by earlier deployments at /data, but
   // only if the exact file is referenced by a catalog product.
@@ -782,12 +883,11 @@ async function startServer() {
       fs.mkdirSync(PRODUCT_IMAGE_DIR, { recursive: true });
       fs.writeFileSync(path.join(PRODUCT_IMAGE_DIR, filename), imageData);
 
-      // Telegram resolves this URL outside the browser, without an admin cookie.
-      const protocol = req.protocol || 'https';
-      const host = req.get('host') || req.headers.host;
-      const imageUrl = `${protocol}://${host}/product-images/${encodeURIComponent(filename)}`;
-
-      res.json({ success: true, url: imageUrl });
+      // A root-relative path, so the stored value never freezes the host the
+      // panel happened to be opened on (localhost during a tunnel/preview, or a
+      // previous Railway domain). Callers that need an absolute URL — Telegram
+      // fetches images from its own servers — resolve it at send time.
+      res.json({ success: true, url: `/product-images/${encodeURIComponent(filename)}` });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1443,6 +1543,11 @@ async function startServer() {
       createdAt: new Date().toISOString()
     };
 
+    // Only publicly fetchable addresses can appear in a group report.
+    const reportablePhotos = replyPhotos
+      .map((photo) => toPubliclyFetchableUrl(photo, req))
+      .filter((photo): photo is string => Boolean(photo));
+
     supportTickets[ticketIndex].replies.push(newReply);
     supportTickets[ticketIndex].updatedAt = new Date().toISOString();
     if (isFromAdmin) {
@@ -1466,12 +1571,42 @@ async function startServer() {
           ]
         };
 
-        // Telegram shows several pictures only through sendMediaGroup, and an
-        // album cannot carry inline buttons, so the keyboard follows it in a
-        // separate message. Base64 data URLs are not addressable inside a media
-        // group, so those fall back to one sendPhoto per image.
-        const albumReady = replyPhotos.filter((photo) => !photo.startsWith('data:'));
-        const useAlbum = replyPhotos.length > 1 && albumReady.length === replyPhotos.length;
+        // Telegram fetches images by URL from its own servers, so a stored
+        // relative path has to become a public address first. When the app has
+        // no public host (a local run), the bytes are uploaded directly instead
+        // of handing Telegram a link it cannot reach.
+        const resolvedPhotos = replyPhotos.map((photo) => ({
+          reference: photo,
+          url: toPubliclyFetchableUrl(photo, req),
+        }));
+        const localFiles = resolvedPhotos.filter((photo) => !photo.url);
+
+        const sendLocalPhoto = async (reference: string, extraFields: Record<string, unknown>) => {
+          const filename = productImageFilename(reference, 'product-images');
+          const filePath = filename ? path.join(PRODUCT_IMAGE_DIR, filename) : null;
+          if (!filePath || !fs.existsSync(filePath)) return false;
+          const form = new FormData();
+          form.append('chat_id', String(chatId));
+          for (const [key, fieldValue] of Object.entries(extraFields)) {
+            if (fieldValue !== undefined) {
+              form.append(key, typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue));
+            }
+          }
+          form.append('photo', new Blob([fs.readFileSync(filePath)]), filename!);
+          const uploadRes = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+            method: 'POST',
+            body: form,
+          });
+          return uploadRes.ok;
+        };
+
+        // Base64 data URLs are not addressable inside a media group either.
+        const albumReady = resolvedPhotos
+          .filter((photo) => photo.url)
+          .map((photo) => photo.url as string);
+        const useAlbum = replyPhotos.length > 1
+          && localFiles.length === 0
+          && albumReady.length === replyPhotos.length;
 
         if (useAlbum) {
           await fetch(`https://api.telegram.org/bot${botToken}/sendMediaGroup`, {
@@ -1492,25 +1627,33 @@ async function startServer() {
             body: JSON.stringify({ chat_id: chatId, text: followUp, parse_mode: 'HTML', reply_markup: replyKeyboard })
           });
         } else if (replyPhotos.length === 1) {
-          await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              photo: replyPhotos[0],
-              caption: `${caption}\n\n${followUp}`,
-              parse_mode: 'HTML',
-              reply_markup: replyKeyboard,
-            })
-          });
-        } else if (replyPhotos.length > 1) {
-          // Mixed/base64 set: send each picture, then the buttons once.
-          for (const photo of replyPhotos) {
+          const only = resolvedPhotos[0];
+          const captionFields = {
+            caption: `${caption}\n\n${followUp}`,
+            parse_mode: 'HTML',
+            reply_markup: replyKeyboard,
+          };
+          if (only.url) {
             await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: chatId, photo, parse_mode: 'HTML' })
+              body: JSON.stringify({ chat_id: chatId, photo: only.url, ...captionFields })
             });
+          } else {
+            await sendLocalPhoto(only.reference, captionFields);
+          }
+        } else if (replyPhotos.length > 1) {
+          // Mixed set (uploads plus links): send each picture, then the buttons.
+          for (const photo of resolvedPhotos) {
+            if (photo.url) {
+              await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, photo: photo.url, parse_mode: 'HTML' })
+              });
+            } else {
+              await sendLocalPhoto(photo.reference, {});
+            }
           }
           await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
@@ -1539,7 +1682,7 @@ async function startServer() {
       sendToTelegramTopic(
         'support',
         `✅ <b>پاسخ به تیکت ${supportTickets[ticketIndex].ticketNumber} ارسال شد:</b>\n\n👤 مشتری: ${supportTickets[ticketIndex].customerName}\n✍️ <b>متن پاسخ ادمین:</b>\n${replyText || '(بدون متن)'}`,
-        replyPhotos.length ? replyPhotos : undefined
+        reportablePhotos.length ? reportablePhotos : undefined
       );
     }
 

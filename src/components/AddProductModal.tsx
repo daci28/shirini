@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, Sparkles, CakeSlice, Check, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { Product, ProductCategory } from '../types';
 import { formatPrice } from '../utils/formatters';
+import UploadProgressBar from './UploadProgressBar';
+import { uploadImagesWithProgress, type UploadProgress } from '../utils/uploadWithProgress';
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -39,6 +41,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [stockKgOrCount, setStockKgOrCount] = useState('20');
   const [loading, setLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [createdProduct, setCreatedProduct] = useState<Product | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,35 +95,29 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       const allImages = [...uploadedImagesBase64, ...images];
       const finalImage = allImages[0] || customImageUrl.trim() || PRESET_IMAGES[0].url;
 
-      // Upload base64 images and get real URLs
-      const uploadedUrls = await Promise.all(allImages.map(async (img) => {
-        if (img.startsWith('data:image/')) {
-          try {
-            // Convert base64 to blob
-            const response = await fetch(img);
-            const blob = await response.blob();
-            
-            // Upload to server
-            const uploadResponse = await fetch('/api/upload-image', {
-              method: 'POST',
-              body: blob,
-              headers: {
-                'Content-Type': blob.type
-              }
-            });
-            
-            if (uploadResponse.ok) {
-              const data = await uploadResponse.json();
-              return data.url;
-            }
-          } catch (err) {
-            console.error('Failed to upload image:', err);
-          }
+      // Only the pasted/dropped pictures need uploading; the rest are already URLs.
+      const pendingIndices: number[] = [];
+      const blobs: Blob[] = [];
+      for (const [index, img] of allImages.entries()) {
+        if (!img.startsWith('data:image/')) continue;
+        try {
+          const blob = await (await fetch(img)).blob();
+          pendingIndices.push(index);
+          blobs.push(blob);
+        } catch (err) {
+          console.error('Failed to read image:', err);
         }
-        return img;
-      }));
+      }
 
-      const finalImages = uploadedUrls.filter(url => url);
+      // Uploaded one by one so the bar can report real progress.
+      const storedUrls = await uploadImagesWithProgress(blobs, setUploadProgress);
+
+      const uploadedUrls = [...allImages];
+      pendingIndices.forEach((target, i) => {
+        if (storedUrls[i]) uploadedUrls[target] = storedUrls[i];
+      });
+
+      const finalImages = uploadedUrls.filter((url) => url && !url.startsWith('data:image/'));
 
       const newProduct = await onAddProduct({
         name: name.trim(),
@@ -287,6 +284,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 (آپلود مستقیم عکس، درگ و دراپ یا انتخاب از گالری)
               </span>
             </div>
+
+            <UploadProgressBar progress={uploadProgress} className="mb-3" />
 
             {/* Hidden Input for file picker */}
             <input

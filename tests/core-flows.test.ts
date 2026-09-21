@@ -1716,7 +1716,7 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
 
   // The panel uploads the bytes first: Telegram cannot fetch a data URL.
   assert.ok(
-    supportManagerSource.includes("'/api/upload-image'"),
+    supportManagerSource.includes('uploadImagesWithProgress('),
     'Attached images must be uploaded so Telegram can fetch them.',
   );
   assert.ok(
@@ -1808,67 +1808,89 @@ function testShopAttachedImagesAreReachable() {
 }
 
 function testUploadsReportTheirProgress() {
-  const supportManagerSource = fs.readFileSync(
-    new URL('../src/components/SupportManager.tsx', import.meta.url),
+  const helperSource = fs.readFileSync(
+    new URL('../src/utils/uploadWithProgress.ts', import.meta.url),
+    'utf8',
+  );
+  const barSource = fs.readFileSync(
+    new URL('../src/components/UploadProgressBar.tsx', import.meta.url),
     'utf8',
   );
 
   // fetch() cannot report upload progress at all; only XHR exposes the bytes
   // that have actually left the browser.
   assert.ok(
-    supportManagerSource.includes('new XMLHttpRequest()'),
+    helperSource.includes('new XMLHttpRequest()'),
     'The upload must use XMLHttpRequest so progress can be measured.',
   );
   assert.ok(
-    /request\.upload\.onprogress\s*=/.test(supportManagerSource),
+    /request\.upload\.onprogress\s*=/.test(helperSource),
     'The upload must subscribe to the progress event.',
   );
   assert.ok(
-    /event\.loaded\s*\/\s*event\.total/.test(supportManagerSource),
+    /event\.loaded\s*\/\s*event\.total/.test(helperSource),
     'Progress must be computed from the bytes actually sent.',
   );
   assert.ok(
-    supportManagerSource.includes('event.lengthComputable'),
+    helperSource.includes('event.lengthComputable'),
     'A progress event without a known total must not be trusted.',
+  );
+  // A batch must be weighted by size, otherwise the bar jumps around.
+  assert.ok(
+    /totalBytes\s*=\s*blobs\.reduce/.test(helperSource),
+    'A multi-picture upload must weight progress by byte size.',
+  );
+  assert.ok(
+    /finally\s*\{[\s\S]{0,120}onProgress\(null\)/.test(helperSource),
+    'The progress must be cleared when the upload finishes or fails.',
   );
 
   // The measured value has to reach the screen as a real bar.
   assert.ok(
-    /setReplyUploadProgress\(\{[\s\S]{0,200}percent/.test(supportManagerSource),
-    'The measured progress must be stored in component state.',
-  );
-  assert.ok(
-    /role="progressbar"[\s\S]{0,400}aria-valuenow=\{replyUploadProgress\.percent\}/.test(
-      supportManagerSource,
-    ),
+    /role="progressbar"[\s\S]{0,400}aria-valuenow=\{progress\.percent\}/.test(barSource),
     'The progress must be exposed as an accessible progressbar.',
   );
   assert.ok(
-    /style=\{\{ width: `\$\{replyUploadProgress\.percent\}%` \}\}/.test(supportManagerSource),
+    /style=\{\{ width: `\$\{progress\.percent\}%` \}\}/.test(barSource),
     'The bar width must follow the real percentage.',
   );
   assert.ok(
-    supportManagerSource.includes('باقی مانده'),
+    barSource.includes('باقی مانده است'),
     'The panel must also say how much of the upload is left.',
   );
 
-  // A batch must be weighted by size, otherwise the bar jumps around.
-  assert.ok(
-    /totalBytes\s*=\s*queue\.reduce/.test(supportManagerSource),
-    'A multi-picture upload must weight progress by byte size.',
-  );
-  assert.ok(
-    /current:\s*index \+ 1/.test(supportManagerSource) &&
-      /total:\s*queue\.length/.test(supportManagerSource),
-    'The panel must show which picture of the batch is uploading.',
-  );
-  // The indicator must not be left on screen after the upload ends.
-  assert.ok(
-    /finally\s*\{[\s\S]{0,200}setReplyUploadProgress\(null\)/.test(supportManagerSource),
-    'The progress bar must be cleared when the upload finishes or fails.',
-  );
+  // Every place the panel uploads a picture must show the bar; the product
+  // pictures are the ones the shop uploads most often.
+  const uploadScreens: Array<[string, string]> = [
+    [
+      'src/components/SupportManager.tsx',
+      fs.readFileSync(new URL('../src/components/SupportManager.tsx', import.meta.url), 'utf8'),
+    ],
+    [
+      'src/components/ProductManager.tsx',
+      fs.readFileSync(new URL('../src/components/ProductManager.tsx', import.meta.url), 'utf8'),
+    ],
+    [
+      'src/components/AddProductModal.tsx',
+      fs.readFileSync(new URL('../src/components/AddProductModal.tsx', import.meta.url), 'utf8'),
+    ],
+  ];
+  for (const [name, source] of uploadScreens) {
+    assert.ok(
+      source.includes('<UploadProgressBar'),
+      `${name} uploads pictures, so it must show the progress bar.`,
+    );
+    assert.ok(
+      /uploadImagesWithProgress\(/.test(source),
+      `${name} must upload through the progress-reporting helper.`,
+    );
+    assert.ok(
+      !/fetch\(\s*['"]\/api\/upload-image/.test(source),
+      `${name} must not upload through fetch, which cannot report progress.`,
+    );
+  }
 
-  console.log('✅ picture uploads show a real percentage while they run');
+  console.log('✅ every picture upload in the panel shows a real percentage');
 }
 
 function testShopNameComesFromSettingsEverywhere() {

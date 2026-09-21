@@ -170,12 +170,38 @@ export const BotTextsCustomizer: React.FC<BotTextsCustomizerProps> = ({
     setText(activeKey, content);
   };
 
+  // The preview must show what the customer will really receive, so the shop's
+  // own details win over the placeholder samples.
+  const previewVars = React.useMemo(() => {
+    const real: Record<string, string | undefined> = {
+      storeName: settings.storeName,
+      storePhone: settings.storePhone,
+      storeAddress: settings.storeAddress,
+      cardNumber: settings.cardNumber,
+      cardHolder: settings.cardHolder,
+      shabaNumber: settings.shabaNumber,
+    };
+    const merged: Record<string, string> = { ...sampleVars };
+    for (const [key, value] of Object.entries(real)) {
+      const trimmed = String(value ?? '').trim();
+      if (trimmed) merged[key] = trimmed;
+    }
+    return merged;
+  }, [
+    settings.storeName,
+    settings.storePhone,
+    settings.storeAddress,
+    settings.cardNumber,
+    settings.cardHolder,
+    settings.shabaNumber,
+  ]);
+
   const isDarkTg = telegramPreviewTheme === 'dark';
   const suggestions = buildSuggestions(activeKey);
   const overriddenCount = BOT_MESSAGE_LIST.filter((def) => isOverridden(def.key)).length;
 
   const renderTelegramFormattedText = (rawText: string) => {
-    const populated = renderBotText(rawText, sampleVars);
+    const populated = renderBotText(rawText, previewVars);
     const boldStyle = isDarkTg ? 'color:#fff;font-weight:700;' : 'color:#0f172a;font-weight:700;';
     const italicStyle = isDarkTg ? 'color:#fde68a;font-style:italic;' : 'color:#92400e;font-style:italic;';
     const codeStyle = isDarkTg
@@ -381,7 +407,7 @@ export const BotTextsCustomizer: React.FC<BotTextsCustomizerProps> = ({
                   }}
                 >
                   <div className="mb-1.5 flex items-center justify-between border-b pb-1" style={{ borderColor: isDarkTg ? '#2e3d4f' : '#f1f5f9' }}>
-                    <span className="text-xs font-bold" style={{ color: isDarkTg ? '#38bdf8' : '#0284c7' }}>{settings.botName || settings.storeName || 'قنادی'}</span>
+                    <span className="text-xs font-bold" style={{ color: isDarkTg ? '#38bdf8' : '#0284c7' }}>{settings.botName || settings.storeName || 'فروشگاه'}</span>
                     <span className="rounded px-1.5 py-0.2 font-mono text-[10px]" style={{ backgroundColor: isDarkTg ? '#1e293b' : '#f1f5f9', color: isDarkTg ? '#94a3b8' : '#64748b' }}>bot</span>
                   </div>
                   <div className="text-right" dangerouslySetInnerHTML={{ __html: renderTelegramFormattedText(currentValue || getDefaultBotText(activeKey)) }} />

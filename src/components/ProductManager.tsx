@@ -22,6 +22,8 @@ import { matchesSearchValues } from '../utils/search';
 import { formatPrice, toPersianDigits } from '../utils/formatters';
 import { AddProductModal } from './AddProductModal';
 import { EditPriceModal } from './EditPriceModal';
+import UploadProgressBar from './UploadProgressBar';
+import { uploadImagesWithProgress, type UploadProgress } from '../utils/uploadWithProgress';
 
 interface ProductManagerProps {
   products: Product[];
@@ -42,6 +44,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   const [editingPriceProduct, setEditingPriceProduct] = useState<Product | null>(null);
   const [changingPhotoProduct, setChangingPhotoProduct] = useState<Product | null>(null);
   const [newPhotoUrls, setNewPhotoUrls] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploadedBase64Array, setUploadedBase64Array] = useState<string[]>([]);
   const [removedImageIndices, setRemovedImageIndices] = useState<number[]>([]);
 
@@ -71,31 +74,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   });
 
   const handlePhotoUpload = async (files: FileList) => {
-    Array.from(files).forEach(async (file) => {
-      if (!file.type.startsWith('image/')) {
-        alert('لطفاً فقط فایل تصویری (عکس) انتخاب کنید.');
-        return;
-      }
-      
-      try {
-        const response = await fetch('/api/upload-image', {
-          method: 'POST',
-          body: file,
-          headers: {
-            'Content-Type': file.type
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setNewPhotoUrls((prev) => [...prev, data.url]);
-        } else {
-          alert('خطا در آپلود عکس');
-        }
-      } catch (err) {
-        alert('خطا در آپلود عکس');
-      }
-    });
+    const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (images.length !== files.length) {
+      alert('لطفاً فقط فایل تصویری (عکس) انتخاب کنید.');
+    }
+    if (images.length === 0) return;
+
+    const urls = await uploadImagesWithProgress(images, setUploadProgress);
+    if (urls.length) setNewPhotoUrls((prev) => [...prev, ...urls]);
+    if (urls.length < images.length) alert('خطا در آپلود عکس');
   };
 
   const handlePhotoUpdateSubmit = async (e: React.FormEvent) => {
@@ -421,6 +408,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                   </div>
                 </div>
               )}
+
+              <UploadProgressBar progress={uploadProgress} className="mb-3" />
 
               {/* Upload Input */}
               <input

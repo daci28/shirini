@@ -28,6 +28,8 @@ import { resolveTelegramImageSource } from '../utils/telegramImage';
 import { matchesSearchValues } from '../utils/search';
 import { ZoomableImageModal } from './ZoomableImageModal';
 import { CustomerBroadcastPanel } from './CustomerBroadcastPanel';
+import UploadProgressBar from './UploadProgressBar';
+import { uploadImagesWithProgress, type UploadProgress } from '../utils/uploadWithProgress';
 
 interface SupportManagerProps {
   tickets: SupportTicket[];
@@ -155,11 +157,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
   const [replyPhotos, setReplyPhotos] = useState<string[]>([]);
   const [isUploadingReplyPhotos, setIsUploadingReplyPhotos] = useState(false);
   // Live upload progress so the admin sees how much of the picture has gone up.
-  const [replyUploadProgress, setReplyUploadProgress] = useState<{
-    percent: number;
-    current: number;
-    total: number;
-  } | null>(null);
+  const [replyUploadProgress, setReplyUploadProgress] = useState<UploadProgress | null>(null);
   const replyFileInputRef = useRef<HTMLInputElement>(null);
   // The set the previewed image belongs to, so the viewer can step through the
   // whole album of that one message instead of every image in the thread.
@@ -291,49 +289,6 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
    * Uploads a picture and returns the URL Telegram can fetch. A data URL would
    * not be reachable by Telegram's servers, so the bytes are stored first.
    */
-  const uploadReplyImage = (
-    file: File,
-    onProgress?: (fraction: number) => void,
-  ): Promise<string | null> =>
-    // XMLHttpRequest rather than fetch: it is the only one that reports how
-    // many bytes have actually left the browser, which is what the bar shows.
-    new Promise((resolve) => {
-      const request = new XMLHttpRequest();
-      request.open('POST', '/api/upload-image', true);
-      request.withCredentials = true;
-      request.setRequestHeader('Content-Type', file.type);
-
-      request.upload.onprogress = (event) => {
-        if (!event.lengthComputable || !event.total) return;
-        onProgress?.(Math.min(1, event.loaded / event.total));
-      };
-
-      request.onload = () => {
-        // The bytes are up; anything left is the server answering.
-        onProgress?.(1);
-        let body: any = null;
-        try {
-          body = JSON.parse(request.responseText);
-        } catch {
-          body = null;
-        }
-        if (request.status < 200 || request.status >= 300 || !body?.url) {
-          alert(body?.error || 'بارگذاری تصویر ناموفق بود.');
-          resolve(null);
-          return;
-        }
-        resolve(body.url as string);
-      };
-
-      request.onerror = () => {
-        alert('بارگذاری تصویر ناموفق بود.');
-        resolve(null);
-      };
-      request.onabort = () => resolve(null);
-
-      request.send(file);
-    });
-
   const handleReplyFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
@@ -344,28 +299,11 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
     const queue = images.slice(0, Math.max(0, MAX_REPLY_PHOTOS - replyPhotos.length));
     if (queue.length === 0) return;
 
-    // One bar for the whole batch, weighted by byte size so a big picture does
-    // not jump to 100% while a small one is still going.
-    const totalBytes = queue.reduce((sum, file) => sum + file.size, 0) || 1;
-    let uploadedBytes = 0;
-
     setIsUploadingReplyPhotos(true);
-    setReplyUploadProgress({ percent: 0, current: 1, total: queue.length });
     try {
-      const uploaded: string[] = [];
-      for (const [index, file] of queue.entries()) {
-        const url = await uploadReplyImage(file, (fraction) => {
-          const percent = Math.round(((uploadedBytes + file.size * fraction) / totalBytes) * 100);
-          setReplyUploadProgress({
-            percent: Math.min(100, Math.max(0, percent)),
-            current: index + 1,
-            total: queue.length,
-          });
-        });
-        uploadedBytes += file.size;
-        if (url) uploaded.push(url);
-      }
+      const uploaded = await uploadImagesWithProgress(queue, setReplyUploadProgress);
       if (uploaded.length) setReplyPhotos((prev) => [...prev, ...uploaded].slice(0, MAX_REPLY_PHOTOS));
+      if (uploaded.length < queue.length) alert('بارگذاری تصویر ناموفق بود.');
     } finally {
       setIsUploadingReplyPhotos(false);
       setReplyUploadProgress(null);
@@ -919,37 +857,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                     </span>
                   </div>
                 )}
-                {replyUploadProgress && (
-                  <div className="mb-2 rounded-xl border border-purple-500/30 bg-slate-950/70 px-3 py-2">
-                    <div className="mb-1.5 flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-purple-200">
-                        در حال بارگذاری تصویر {replyUploadProgress.current.toLocaleString('fa-IR')} از{' '}
-                        {replyUploadProgress.total.toLocaleString('fa-IR')}
-                      </span>
-                      <span className="font-mono text-purple-300">
-                        {replyUploadProgress.percent.toLocaleString('fa-IR')}٪
-                      </span>
-                    </div>
-                    <div
-                      className="h-2 w-full overflow-hidden rounded-full bg-slate-800"
-                      role="progressbar"
-                      aria-label="پیشرفت بارگذاری تصویر"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={replyUploadProgress.percent}
-                    >
-                      <div
-                        className="h-full rounded-full bg-gradient-to-l from-purple-500 to-fuchsia-400 transition-all duration-200"
-                        style={{ width: `${replyUploadProgress.percent}%` }}
-                      />
-                    </div>
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      {replyUploadProgress.percent >= 100
-                        ? 'در حال نهایی‌سازی روی سرور...'
-                        : `${(100 - replyUploadProgress.percent).toLocaleString('fa-IR')}٪ باقی مانده است`}
-                    </p>
-                  </div>
-                )}
+                <UploadProgressBar progress={replyUploadProgress} className="mb-2" />
                 <div className="flex items-center gap-2">
                   <input
                     ref={replyFileInputRef}

@@ -278,7 +278,7 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           groupId: formData.forumGroupId || '-1002849173620',
-          title: formData.forumGroupTitle || 'سوپرگروه مدیریت قنادی شیرین‌کام',
+          title: formData.forumGroupTitle || `سوپرگروه مدیریت ${formData.storeName || 'فروشگاه'}`,
         }),
       });
       const data = (await res.json()) as any;
@@ -504,7 +504,7 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
                 type="text"
                 value={formData.forumGroupTitle || ''}
                 onChange={(e) => handleInputChange('forumGroupTitle', e.target.value)}
-                placeholder="گروه هماهنگی و مدیریت قنادی شیرین‌کام"
+                placeholder="گروه هماهنگی و مدیریت فروشگاه"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-indigo-500"
               />
               <p className="text-[11px] text-slate-400 mt-1">

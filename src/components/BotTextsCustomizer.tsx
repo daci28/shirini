@@ -42,11 +42,11 @@ const groupIcons: Record<string, React.ReactNode> = {
 };
 
 const sampleVars: Record<string, string> = {
-  storeName: 'قنادی شیرین‌کام',
+  storeName: 'فروشگاه',
   storePhone: '۰۲۱-۸۸۹۹۲۲۳۳',
   storeAddress: 'تهران، خیابان ولیعصر',
   cardNumber: '6037-9975-1234-5678',
-  cardHolder: 'مدیریت قنادی',
+  cardHolder: 'مدیریت فروشگاه',
   shabaNumber: 'IR650170000000123456789012',
   orderNumber: 'SH-260828-100042',
   totalAmount: '۸۵۰٬۰۰۰',

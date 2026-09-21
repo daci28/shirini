@@ -141,7 +141,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           databaseEngine: 'MasterInMemoryEngine',
           totalEntities,
           totalWalletBalances: totalWalletBalance,
-          storeName: botSettings.storeName || 'قنادی شیرین‌کام',
+          storeName: botSettings.storeName || 'فروشگاه',
           storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳'
         },
         data: rawData
@@ -254,7 +254,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
 
         const data = parsed.data || parsed;
         if (!data.products && !data.orders && !data.customers && !data.botSettings) {
-          throw new Error('فایل انتخاب‌شده حاوی اطلاعات پایگاه داده سامانه شیرین‌کام نمی‌باشد.');
+          throw new Error('فایل انتخاب‌شده حاوی اطلاعات پایگاه داده این سامانه نمی‌باشد.');
         }
 
         const validatedPayload: MasterBackupPayload = {
@@ -268,7 +268,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             databaseEngine: 'MasterInMemoryEngine',
             totalEntities: (data.products?.length || 0) + (data.orders?.length || 0) + (data.customers?.length || 0),
             totalWalletBalances: data.customers?.reduce((s: number, c: any) => s + (c.walletBalance || 0), 0) || 0,
-            storeName: data.botSettings?.storeName || 'قنادی شیرین‌کام',
+            storeName: data.botSettings?.storeName || 'فروشگاه',
             storePhone: data.botSettings?.storePhone || ''
           },
           data: {

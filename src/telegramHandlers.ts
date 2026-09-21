@@ -124,6 +124,11 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;');
 }
 
+/** The shop's configured display name; never hardcode it in a message. */
+function storeNameOf(ctx: { botSettings?: any }): string {
+  return String(ctx.botSettings?.storeName || '').trim() || 'فروشگاه';
+}
+
 async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], photo?: string) {
   const base: any = { chat_id: ctx.chatId, parse_mode: 'HTML' };
   if (photo) {
@@ -735,7 +740,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     const revenue = ctx.orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + o.totalAmount, 0)
       + (Array.isArray(ctx.invoices) ? ctx.invoices.reduce((s, inv) => s + (inv.paidAmount || 0), 0) : 0);
 
-    const text = `👨‍🍳 <b>پنل مدیریت هوشمند قنادی شیرین‌کام</b>\n` +
+    const text = `👨‍🍳 <b>پنل مدیریت هوشمند ${storeNameOf(ctx)}</b>\n` +
       `────────────────────\n` +
       `💰 <b>فروش کل:</b> <b>${revenue.toLocaleString()} تومان</b>\n` +
       `🧾 <b>فیش‌های منتظر بررسی:</b> <b>${totalPendingReceipts} مورد</b>\n` +
@@ -1198,7 +1203,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     const topics = ctx.botSettings.forumTopics || [];
     let msg = `🏷️ <b>سوپرگروه تاپیک‌دار تلگرام (۸ تاپیک تفکیک‌شده)</b>\n────────────────────\n`;
     msg += `🔹 <b>وضعیت اتصال:</b> ${isConnected ? `🟢 متصل به گروه (<code>${ctx.botSettings.forumGroupId}</code>)` : '⚠️ گروه تنظیم نشده'}\n`;
-    msg += `🔹 <b>نام گروه:</b> ${ctx.botSettings.forumGroupTitle || 'گروه مدیریت قنادی'}\n`;
+    msg += `🔹 <b>نام گروه:</b> ${ctx.botSettings.forumGroupTitle || `گروه مدیریت ${storeNameOf(ctx)}`}\n`;
     msg += `────────────────────\n<b>📌 تاپیک‌های فعال قنادی:</b>\n\n`;
 
     topics.forEach((t: any) => {
@@ -2030,7 +2035,7 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: ticket.customerTelegramId,
-              text: `📬 <b>پاسخ مدیریت به تیکت پشتیبانی #${ticket.ticketNumber}:</b>\n\n💬 <b>موضوع:</b> ${ticket.subject}\n──────────────\n${text}\n──────────────\n<i>قنادی شیرین‌کام</i>`,
+              text: `📬 <b>پاسخ مدیریت به تیکت پشتیبانی #${ticket.ticketNumber}:</b>\n\n💬 <b>موضوع:</b> ${ticket.subject}\n──────────────\n${text}\n──────────────\n<i>${storeNameOf(ctx)}</i>`,
               parse_mode: 'HTML'
             })
           });

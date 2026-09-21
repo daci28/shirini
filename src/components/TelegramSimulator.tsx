@@ -172,7 +172,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       ],
       [
         { text: '📍 آدرس، تلفن و درباره قنادی', callback_data: 'contact_info' },
-        { text: '👨‍🍳 ورود به پنل مدیریت قنادی', callback_data: 'switch_to_admin' }
+        { text: '👨‍🍳 ورود به پنل مدیریت', callback_data: 'switch_to_admin' }
       ]
     ];
     addBotMessage(text, buttons, 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80', 200);
@@ -856,7 +856,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       confirmationText += `💎 <b>مبلغ پرداخت شده نهایی:</b> <b>${formatPrice(newOrder.totalAmount)}</b>\n\n`;
       confirmationText += `💳 <b>شماره کارت قنادی:</b> <code>${botSettings.cardNumber}</code>\n`;
       confirmationText += `👤 <b>به نام:</b> ${botSettings.cardHolder}\n\n`;
-      confirmationText += `👩‍🍳 سفارش شما بلافاصله در قنادی شیرین‌کام آماده‌سازی و از طریق پیک مخصوص کیک و شیرینی برای شما ارسال خواهد شد.`;
+      confirmationText += `👩‍🍳 سفارش شما بلافاصله در ${botSettings.storeName || 'فروشگاه'} آماده‌سازی و از طریق پیک مخصوص برای شما ارسال خواهد شد.`;
 
       addBotMessage(confirmationText, [
         [
@@ -1558,7 +1558,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       let msg = `📑 <b>مدیریت سوپرگروه تاپیک‌دار تلگرام قنادی</b>\n`;
       msg += `────────────────────\n`;
       msg += `🔹 <b>وضعیت اتصال:</b> ${isConnected ? `🟢 متصل به گروه (<code>${botSettings.forumGroupId}</code>)` : '⚠️ گروه تنظیم نشده'}\n`;
-      msg += `🔹 <b>نام گروه:</b> ${botSettings.forumGroupTitle || 'گروه مدیریت قنادی شیرین‌کام'}\n`;
+      msg += `🔹 <b>نام گروه:</b> ${botSettings.forumGroupTitle || `گروه مدیریت ${botSettings.storeName || 'فروشگاه'}`}\n`;
       msg += `────────────────────\n`;
       msg += `<b>📌 تاپیک‌های فعال و تفکیک گزارشات:</b>\n\n`;
 
@@ -1612,7 +1612,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             groupId: botSettings.forumGroupId || '-1002849173620',
-            title: botSettings.forumGroupTitle || 'سوپرگروه مدیریت قنادی شیرین‌کام',
+            title: botSettings.forumGroupTitle || `سوپرگروه مدیریت ${botSettings.storeName || 'فروشگاه'}`,
           }),
         });
         const result = (await res.json()) as any;

@@ -1716,7 +1716,7 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
 
   // The panel uploads the bytes first: Telegram cannot fetch a data URL.
   assert.ok(
-    supportManagerSource.includes("fetch('/api/upload-image'"),
+    supportManagerSource.includes("'/api/upload-image'"),
     'Attached images must be uploaded so Telegram can fetch them.',
   );
   assert.ok(
@@ -1807,6 +1807,174 @@ function testShopAttachedImagesAreReachable() {
   console.log('✅ shop-attached images are reachable by the panel and Telegram');
 }
 
+function testUploadsReportTheirProgress() {
+  const supportManagerSource = fs.readFileSync(
+    new URL('../src/components/SupportManager.tsx', import.meta.url),
+    'utf8',
+  );
+
+  // fetch() cannot report upload progress at all; only XHR exposes the bytes
+  // that have actually left the browser.
+  assert.ok(
+    supportManagerSource.includes('new XMLHttpRequest()'),
+    'The upload must use XMLHttpRequest so progress can be measured.',
+  );
+  assert.ok(
+    /request\.upload\.onprogress\s*=/.test(supportManagerSource),
+    'The upload must subscribe to the progress event.',
+  );
+  assert.ok(
+    /event\.loaded\s*\/\s*event\.total/.test(supportManagerSource),
+    'Progress must be computed from the bytes actually sent.',
+  );
+  assert.ok(
+    supportManagerSource.includes('event.lengthComputable'),
+    'A progress event without a known total must not be trusted.',
+  );
+
+  // The measured value has to reach the screen as a real bar.
+  assert.ok(
+    /setReplyUploadProgress\(\{[\s\S]{0,200}percent/.test(supportManagerSource),
+    'The measured progress must be stored in component state.',
+  );
+  assert.ok(
+    /role="progressbar"[\s\S]{0,400}aria-valuenow=\{replyUploadProgress\.percent\}/.test(
+      supportManagerSource,
+    ),
+    'The progress must be exposed as an accessible progressbar.',
+  );
+  assert.ok(
+    /style=\{\{ width: `\$\{replyUploadProgress\.percent\}%` \}\}/.test(supportManagerSource),
+    'The bar width must follow the real percentage.',
+  );
+  assert.ok(
+    supportManagerSource.includes('باقی مانده'),
+    'The panel must also say how much of the upload is left.',
+  );
+
+  // A batch must be weighted by size, otherwise the bar jumps around.
+  assert.ok(
+    /totalBytes\s*=\s*queue\.reduce/.test(supportManagerSource),
+    'A multi-picture upload must weight progress by byte size.',
+  );
+  assert.ok(
+    /current:\s*index \+ 1/.test(supportManagerSource) &&
+      /total:\s*queue\.length/.test(supportManagerSource),
+    'The panel must show which picture of the batch is uploading.',
+  );
+  // The indicator must not be left on screen after the upload ends.
+  assert.ok(
+    /finally\s*\{[\s\S]{0,200}setReplyUploadProgress\(null\)/.test(supportManagerSource),
+    'The progress bar must be cleared when the upload finishes or fails.',
+  );
+
+  console.log('✅ picture uploads show a real percentage while they run');
+}
+
+function testShopNameComesFromSettingsEverywhere() {
+  const files: Array<[string, string]> = [
+    ['server.ts', fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8')],
+    [
+      'src/telegramHandlers.ts',
+      fs.readFileSync(new URL('../src/telegramHandlers.ts', import.meta.url), 'utf8'),
+    ],
+    ['src/App.tsx', fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')],
+    [
+      'src/components/SupportManager.tsx',
+      fs.readFileSync(new URL('../src/components/SupportManager.tsx', import.meta.url), 'utf8'),
+    ],
+    [
+      'src/components/BotSettings.tsx',
+      fs.readFileSync(new URL('../src/components/BotSettings.tsx', import.meta.url), 'utf8'),
+    ],
+    [
+      'src/components/BackupManager.tsx',
+      fs.readFileSync(new URL('../src/components/BackupManager.tsx', import.meta.url), 'utf8'),
+    ],
+    [
+      'src/components/BotTextsCustomizer.tsx',
+      fs.readFileSync(new URL('../src/components/BotTextsCustomizer.tsx', import.meta.url), 'utf8'),
+    ],
+    [
+      'src/components/TelegramSimulator.tsx',
+      fs.readFileSync(new URL('../src/components/TelegramSimulator.tsx', import.meta.url), 'utf8'),
+    ],
+  ];
+
+  // No file may ship the old shop name: renaming the shop in the panel has to
+  // rename it everywhere, including in messages the customer receives.
+  for (const [name, source] of files) {
+    assert.ok(
+      !source.includes('شیرین‌کام') && !source.includes('شیرین کام'),
+      `${name} must not hardcode the shop name; read it from the settings instead.`,
+    );
+    assert.ok(
+      !/['"`]مدیریت قنادی['"`]/.test(source) && !/['"`]سرقناد قنادی['"`]/.test(source),
+      `${name} must not hardcode the shop's signature; derive it from the settings.`,
+    );
+  }
+
+  const serverSource = files[0][1];
+  // A single accessor keeps the fallback in one place.
+  assert.ok(
+    /function storeName\(\): string \{[\s\S]{0,200}botSettings\.storeName/.test(serverSource),
+    'The server must read the shop name from the saved settings.',
+  );
+  assert.ok(
+    /function shopSenderName\(\): string \{[\s\S]{0,160}storeName\(\)/.test(serverSource),
+    'The signature the shop replies with must be built from the configured name.',
+  );
+  // An unset name must still produce a sane message rather than "undefined".
+  assert.ok(
+    /botSettings\.storeName \|\| ''\)\.trim\(\) \|\| '[^']+'/.test(serverSource),
+    'A blank shop name must fall back to a readable default.',
+  );
+  assert.ok(
+    !/senderName:\s*'[^']*قناد/.test(serverSource),
+    'Ticket and order replies must be signed with the configured name.',
+  );
+  assert.ok(
+    serverSource.includes('senderName: shopSenderName()'),
+    'The shop must sign its own messages through the shared helper.',
+  );
+
+  const handlersSource = files[1][1];
+  assert.ok(
+    /function storeNameOf\(ctx: \{ botSettings\?: any \}\): string/.test(handlersSource),
+    'The bot handlers must resolve the shop name from their context.',
+  );
+  assert.ok(
+    /storeNameOf\(ctx\)/.test(handlersSource),
+    'The bot handlers must use the resolved shop name in their messages.',
+  );
+
+  const supportManagerSource = files[3][1];
+  assert.ok(
+    /shopSenderName\s*=\s*`مدیریت \$\{botSettings\?\.storeName/.test(supportManagerSource),
+    'The panel must sign replies with the configured shop name.',
+  );
+  assert.ok(
+    supportManagerSource.includes('onReplyTicket(selectedTicket.id, replyInput.trim(), shopSenderName'),
+    'The reply must be sent under the configured shop name.',
+  );
+
+  // Regression: keying the settings load off storeName threw away every other
+  // setting whenever the shop name was blank.
+  const appSource = files[2][1];
+  assert.ok(
+    !appSource.includes('if (sett && sett.storeName) setBotSettings(sett)'),
+    'Saved settings must not be discarded when the shop name is empty.',
+  );
+  assert.ok(
+    /if \(sett && typeof sett === 'object' && !Array\.isArray\(sett\)\) setBotSettings\(sett\)/.test(
+      appSource,
+    ),
+    'Any saved settings object must be applied.',
+  );
+
+  console.log('✅ the shop name comes from the panel settings everywhere');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -1829,6 +1997,8 @@ async function main() {
   testSupportMessagesKeepEveryAttachedPhoto();
   testAdminCanReplyWithSeveralPhotosAndBrowseThem();
   testShopAttachedImagesAreReachable();
+  testUploadsReportTheirProgress();
+  testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

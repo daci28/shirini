@@ -182,7 +182,9 @@ export default function App() {
         }
         if (setRes?.ok) {
           const sett = await setRes.json();
-          if (sett && sett.storeName) setBotSettings(sett);
+          // Any saved settings object counts. Keying this off storeName used to
+          // throw away every other setting whenever the shop name was blank.
+          if (sett && typeof sett === 'object' && !Array.isArray(sett)) setBotSettings(sett);
         }
         if (supRes?.ok) {
           const sups = await supRes.json();
@@ -497,7 +499,7 @@ export default function App() {
     const newReply = {
       id: `rep-${Date.now()}`,
       sender: 'admin' as const,
-      senderName: senderName || 'مدیریت قنادی',
+      senderName: senderName || `مدیریت ${botSettings.storeName?.trim() || 'فروشگاه'}`,
       text: replyText,
       photo: replyPhotos[0],
       photos: replyPhotos.length ? replyPhotos : undefined,
@@ -524,7 +526,7 @@ export default function App() {
         body: JSON.stringify({
           text: replyText,
           sender: 'admin',
-          senderName: senderName || 'مدیریت قنادی',
+          senderName: senderName || undefined,
           photos: replyPhotos,
         })
       });
@@ -743,7 +745,7 @@ export default function App() {
     const newMsg = {
       id: `cmsg-${Date.now()}`,
       sender: 'admin' as const,
-      senderName: senderName || 'سرقناد قنادی',
+      senderName: senderName || `مدیریت ${botSettings.storeName?.trim() || 'فروشگاه'}`,
       text,
       createdAt: new Date().toISOString()
     };
@@ -764,7 +766,7 @@ export default function App() {
       await apiFetch(`/api/custom-orders/${orderId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, sender: 'admin', senderName: senderName || 'سرقناد قنادی' })
+        body: JSON.stringify({ text, sender: 'admin', senderName: senderName || undefined })
       });
     } catch (e) {
       console.error('Failed to send chat message for custom order:', e);
@@ -1280,7 +1282,7 @@ export default function App() {
         {/* App Footer */}
         <footer className="border-t border-slate-800 bg-slate-900/80 py-4 text-center text-xs text-slate-500">
           <p>
-            سامانه هوشمند ربات تلگرام قنادی و شیرینی‌پزی • با پشتیبانی از دکمه‌های شیشه‌ای و اتصال به Bot API تلگرام
+            سامانه هوشمند ربات فروشگاهی تلگرام • با پشتیبانی از دکمه‌های شیشه‌ای و اتصال به Bot API تلگرام
           </p>
         </footer>
       </div>

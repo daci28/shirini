@@ -335,7 +335,7 @@ if (persistedData) {
     ticket.replies.unshift({
       id: `rep-repair-${ticket.id}`,
       sender: openedByAdmin ? 'admin' : 'customer',
-      senderName: openedByAdmin ? 'مدیریت قنادی' : ticket.customerName || 'مشتری',
+      senderName: openedByAdmin ? shopSenderName() : ticket.customerName || 'مشتری',
       text: ticket.message || '',
       photo: ticket.cakePhoto || undefined,
       photos: ticket.cakePhotos?.length ? ticket.cakePhotos : undefined,
@@ -586,6 +586,20 @@ function isReferencedTicketImage(filename: string, route: PublicProductImageRout
   });
 }
 
+/**
+ * The shop's display name, as configured in the panel. Every customer-facing
+ * string must go through this instead of hardcoding a name, so renaming the
+ * shop in settings renames it everywhere.
+ */
+function storeName(): string {
+  return String(botSettings.storeName || '').trim() || 'فروشگاه';
+}
+
+/** The name the shop signs its own support/order replies with. */
+function shopSenderName(): string {
+  return `مدیریت ${storeName()}`;
+}
+
 function getTelegramProfile(telegramUser?: any): { username?: string; displayName?: string } {
   const fullName = [telegramUser?.first_name, telegramUser?.last_name].filter(Boolean).join(' ').trim();
   return {
@@ -688,7 +702,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-21-fix-ticket-image-urls';
+const APP_REVISION = '2026-09-21-upload-progress-and-dynamic-store-name';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -1536,7 +1550,7 @@ async function startServer() {
     const newReply = {
       id: `rep-${Date.now()}`,
       sender: (sender || 'admin') as 'admin' | 'customer',
-      senderName: senderName || (isFromAdmin ? 'مدیریت قنادی' : supportTickets[ticketIndex].customerName),
+      senderName: senderName || (isFromAdmin ? shopSenderName() : supportTickets[ticketIndex].customerName),
       text: replyText,
       photo: replyPhotos[0],
       photos: replyPhotos.length ? replyPhotos : undefined,
@@ -1562,7 +1576,7 @@ async function startServer() {
       try {
         const botToken = getTelegramBotToken();
         const chatId = supportTickets[ticketIndex].customerTelegramId;
-        const caption = `👩‍🍳 <b>پاسخ پشتیبانی قنادی شیرین‌کام (تیکت ${supportTickets[ticketIndex].ticketNumber}):</b>${replyText ? `\n\n${replyText}` : ''}`;
+        const caption = `👩‍🍳 <b>پاسخ پشتیبانی ${storeName()} (تیکت ${supportTickets[ticketIndex].ticketNumber}):</b>${replyText ? `\n\n${replyText}` : ''}`;
         const followUp = '<i>در صورت نیاز به توضیحات بیشتر می‌توانید پاسخ دهید یا بیخیال شوید.</i>';
         const replyKeyboard = {
           inline_keyboard: [
@@ -1982,7 +1996,7 @@ async function startServer() {
       order.chatMessages.push({
         id: `cmsg-${Date.now()}`,
         sender: 'admin',
-        senderName: 'سرقناد شیرین‌کام',
+        senderName: shopSenderName(),
         text: messageToCustomer,
         createdAt: new Date().toISOString()
       });
@@ -2072,7 +2086,7 @@ async function startServer() {
       try {
         let msg = `✨ <b>به‌روزرسانی وضعیت سفارش دلخواه (${order.orderNumber}):</b>\n\nوضعیت جدید: <b>${statusLabels[status] || status}</b>`;
         if (status === 'baking') {
-          msg += `\n\n👨‍🍳 کیک و شیرینی شما در کارگاه شیرین‌کام در حال پخت و دیزاین با بهترین مواد اولیه است.`;
+          msg += `\n\n👨‍🍳 سفارش شما در کارگاه ${storeName()} در حال آماده‌سازی با بهترین مواد اولیه است.`;
         } else if (status === 'ready') {
           msg += `\n\n🎂 سفارش شما با نهایت ظرافت آماده شد و در بسته‌بندی مخصوص قرار گرفت!`;
         } else if (status === 'delivered') {
@@ -2272,7 +2286,7 @@ async function startServer() {
     const newMsg = {
       id: `cmsg-${Date.now()}`,
       sender: (sender || 'admin') as 'admin' | 'customer',
-      senderName: senderName || (isFromAdmin ? 'سرقناد شیرین‌کام' : order.customerName),
+      senderName: senderName || (isFromAdmin ? shopSenderName() : order.customerName),
       text: text.trim(),
       photo,
       createdAt: new Date().toISOString()
@@ -3021,7 +3035,7 @@ async function startServer() {
               {
                 id: `rep-${Date.now()}`,
                 sender: 'admin',
-                senderName: 'مدیریت قنادی',
+                senderName: shopSenderName(),
                 text: text,
                 photo: photo || undefined,
                 createdAt: new Date().toISOString(),
@@ -3648,7 +3662,7 @@ async function startServer() {
   // Simulated auto-group addition endpoint for testing from admin panel
   app.post('/api/telegram/forum/simulate-group-add', async (req: Request, res: Response) => {
     const simulatedGroupId = req.body.groupId || '-1002849173620';
-    const simulatedGroupTitle = req.body.title || 'گروه پرسنل و مدیریت قنادی شیرین‌کام';
+    const simulatedGroupTitle = req.body.title || `گروه پرسنل و مدیریت ${storeName()}`;
 
     const { updatedTopics, results } = await autoSetupGroupTopics(
       simulatedGroupId,
@@ -3696,10 +3710,10 @@ async function startServer() {
         const lastOrder = orders[0];
         reportMessage = `📦 <b>گزارش لحظه‌ای سفارشات قنادی</b>\n\n🔖 <b>شماره آخرین سفارش:</b> <code>${lastOrder?.orderNumber || 'SH-8422'}</code>\n👤 <b>مشتری:</b> ${lastOrder?.customerName || 'سارا حسینی'}\n💰 <b>مبلغ کل:</b> ${(lastOrder?.totalAmount || 940000).toLocaleString('fa-IR')} تومان\n🛵 <b>وضعیت:</b> در حال آماده‌سازی و ارسال با پیک مخصوص`;
       } else if (key === 'custom_orders') {
-        reportMessage = `🎂 <b>گزارش سفارشات کیک و شیرینی دلخواه</b>\n\n🔖 <b>تعداد کل طرح‌های سفارشی:</b> ${customOrders.length.toLocaleString('fa-IR')} عدد\n🎨 <b>آخرین سفارش:</b> کیک فوندانت مناسبتی\n👩‍🍳 <b>وضعیت:</b> متصل به کارگاه پخت شیرین‌کام`;
+        reportMessage = `🎂 <b>گزارش سفارشات کیک و شیرینی دلخواه</b>\n\n🔖 <b>تعداد کل طرح‌های سفارشی:</b> ${customOrders.length.toLocaleString('fa-IR')} عدد\n🎨 <b>آخرین سفارش:</b> کیک فوندانت مناسبتی\n👩‍🍳 <b>وضعیت:</b> متصل به کارگاه پخت ${storeName()}`;
       } else if (key === 'finance') {
         const totalSales = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-        reportMessage = `💳 <b>گزارش وضعیت مالی و فیش‌های دریافتی</b>\n\n💎 <b>مجموع کل واریزی‌های ثبت‌شده:</b> ${totalSales.toLocaleString('fa-IR')} تومان\n🧾 <b>تعداد کل فاکتورها:</b> ${orders.length.toLocaleString('fa-IR')} عدد\n💳 <b>شماره کارت مقصد:</b> <code>${botSettings.cardNumber || '---'}</code> (${botSettings.cardHolder || 'قنادی شیرین‌کام'})`;
+        reportMessage = `💳 <b>گزارش وضعیت مالی و فیش‌های دریافتی</b>\n\n💎 <b>مجموع کل واریزی‌های ثبت‌شده:</b> ${totalSales.toLocaleString('fa-IR')} تومان\n🧾 <b>تعداد کل فاکتورها:</b> ${orders.length.toLocaleString('fa-IR')} عدد\n💳 <b>شماره کارت مقصد:</b> <code>${botSettings.cardNumber || '---'}</code> (${botSettings.cardHolder || storeName()})`;
       } else if (key === 'products') {
         const availableCount = products.filter((p) => p.isAvailable).length;
         reportMessage = `🧁 <b>گزارش کاتالوگ و انبار شیرینی‌ها</b>\n\n▫️ کل تنوع کیک و شیرینی: <b>${products.length.toLocaleString('fa-IR')} قلم</b>\n▫️ محصولات آماده تحویل: <b>${availableCount.toLocaleString('fa-IR')} کالا</b>\n▫️ هشدار کسری موجودی: کلیه اقلام در وضعیت نرمال قرار دارند.`;
@@ -3714,7 +3728,7 @@ async function startServer() {
       } else {
         // analytics
         const totalSales = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-        reportMessage = `📊 <b>گزارش جامع فروش روزانه قنادی شیرین‌کام</b>\n\n💰 <b>فروش کل:</b> ${totalSales.toLocaleString('fa-IR')} تومان\n📦 <b>تعداد سفارشات موفق:</b> ${orders.length.toLocaleString('fa-IR')} سفارش\n🏆 <b>پرفروش‌ترین کالا:</b> کیک تولد شکلاتی بلژیکی\n📈 <b>میانگین هر سبد خرید:</b> ${Math.round(totalSales / (orders.length || 1)).toLocaleString('fa-IR')} تومان`;
+        reportMessage = `📊 <b>گزارش جامع فروش روزانه ${storeName()}</b>\n\n💰 <b>فروش کل:</b> ${totalSales.toLocaleString('fa-IR')} تومان\n📦 <b>تعداد سفارشات موفق:</b> ${orders.length.toLocaleString('fa-IR')} سفارش\n🏆 <b>پرفروش‌ترین کالا:</b> کیک تولد شکلاتی بلژیکی\n📈 <b>میانگین هر سبد خرید:</b> ${Math.round(totalSales / (orders.length || 1)).toLocaleString('fa-IR')} تومان`;
       }
     }
 
@@ -3765,7 +3779,7 @@ async function startServer() {
         databaseEngine: 'MasterInMemoryEngine',
         totalEntities,
         totalWalletBalances,
-        storeName: botSettings.storeName || 'قنادی شیرین‌کام',
+        storeName: storeName(),
         storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳'
       },
       data: rawData
@@ -4750,7 +4764,7 @@ async function startServer() {
       if (msg.new_chat_members && (chatType === 'supergroup' || chatType === 'group')) {
         const hasBot = msg.new_chat_members.some((u: any) => u.is_bot);
         if (hasBot) {
-          const introMsg = `👋 <b>سلام! ربات مدیریت قنادی شیرین‌کام به گروه اضافه شد.</b>\n\n📌 <b>جهت راه‌اندازی و تفکیک ۸ تاپیک گزارشات:</b>\n۱️⃣ در تنظیمات گروه (Edit Group)، گزینه <b>«Topics / مباحث»</b> را فعال کنید.\n۲️⃣ ربات را با دسترسی <b>«Manage Topics / مدیریت تاپیک‌ها»</b> ادمین فرمایید.\n۳️⃣ سپس دستور <code>/setup_topics</code> را در گروه ارسال کنید.`;
+          const introMsg = `👋 <b>سلام! ربات مدیریت ${storeName()} به گروه اضافه شد.</b>\n\n📌 <b>جهت راه‌اندازی و تفکیک ۸ تاپیک گزارشات:</b>\n۱️⃣ در تنظیمات گروه (Edit Group)، گزینه <b>«Topics / مباحث»</b> را فعال کنید.\n۲️⃣ ربات را با دسترسی <b>«Manage Topics / مدیریت تاپیک‌ها»</b> ادمین فرمایید.\n۳️⃣ سپس دستور <code>/setup_topics</code> را در گروه ارسال کنید.`;
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -5799,7 +5813,7 @@ async function startServer() {
           })
         });
       } else if (data === 'contact_info') {
-        const text = `📍 <b>اطلاعات قنادی:</b>\n\n🏢 <b>نام:</b> ${botSettings.storeName}\n📞 <b>تلفن تماس:</b> ${botSettings.storePhone}\n🏠 <b>آدرس:</b> ${botSettings.storeAddress}\n💳 <b>شماره کارت:</b> <code>${botSettings.cardNumber}</code>\n👤 <b>به نام:</b> ${botSettings.cardHolder}`;
+        const text = `📍 <b>اطلاعات ${storeName()}:</b>\n\n🏢 <b>نام:</b> ${botSettings.storeName}\n📞 <b>تلفن تماس:</b> ${botSettings.storePhone}\n🏠 <b>آدرس:</b> ${botSettings.storeAddress}\n💳 <b>شماره کارت:</b> <code>${botSettings.cardNumber}</code>\n👤 <b>به نام:</b> ${botSettings.cardHolder}`;
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

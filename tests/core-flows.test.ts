@@ -1781,6 +1781,14 @@ function testDeployBuildsTheAppExactlyOnce() {
   );
   assert.ok(/npm start/.test(procfile), 'The Procfile must start the server.');
 
+  // A deployment that installs without dev dependencies must still be able to
+  // build: every tool the build command invokes has to be a real dependency.
+  const deps = pkg.dependencies || {};
+  for (const tool of ['vite', 'esbuild', 'tailwindcss', 'typescript']) {
+    assert.ok(deps[tool], `${tool} must be a dependency so a production install can still build.`);
+  }
+  assert.ok(pkg.engines?.node, 'The Node version must be pinned so the deploy is reproducible.');
+
   // Start still has to work on a cold container with no build cache.
   assert.ok(
     /dist\/server\.cjs/.test(scripts.start) && /npm run build/.test(scripts.start),

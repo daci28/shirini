@@ -960,7 +960,9 @@ export const CustomPastryManager: React.FC<CustomPastryManagerProps> = ({
                     >
                       <div className="flex items-center justify-between gap-3 text-[10px] text-slate-400 mb-1">
                         <span className="font-bold text-amber-400">{msg.senderName}</span>
-                        <span>{new Date(msg.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="shrink-0 font-semibold text-slate-300">
+                          {formatIranianDateTime(msg.createdAt)}
+                        </span>
                       </div>
                       {msg.text && <p className="leading-relaxed">{msg.text}</p>}
                       {imageSource && (
@@ -979,9 +981,6 @@ export const CustomPastryManager: React.FC<CustomPastryManagerProps> = ({
                           />
                         </button>
                       )}
-                      <p className="mt-2 border-t border-white/10 pt-1 text-[10px] text-slate-400">
-                        {formatIranianDateTime(msg.createdAt)}
-                      </p>
                     </div>
                   );
                 })

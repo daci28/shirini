@@ -744,12 +744,11 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           <span className={`font-bold ${openedByAdmin ? 'text-purple-200' : 'text-purple-300'}`}>
                             {openerName}
                           </span>
-                          <span>{new Date(selectedTicket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="shrink-0 font-semibold text-slate-300">
+                            {formatIranianDateTime(selectedTicket.createdAt)}
+                          </span>
                         </div>
                         {selectedTicket.message && <p className="whitespace-pre-line">{selectedTicket.message}</p>}
-                        <p className="mt-2 border-t border-white/10 pt-1 text-[10px] text-slate-400">
-                          {formatIranianDateTime(selectedTicket.createdAt)}
-                        </p>
                         {(() => {
                           const openingImages = collectTicketImageSources(
                             selectedTicket.cakePhotos,
@@ -799,7 +798,9 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           <span className={`font-bold ${isAdmin ? 'text-amber-300' : 'text-purple-300'}`}>
                             {reply.senderName}
                           </span>
-                          <span>{new Date(reply.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="shrink-0 font-semibold text-slate-300">
+                            {formatIranianDateTime(reply.createdAt)}
+                          </span>
                         </div>
                         {displayText && <p className="whitespace-pre-line">{displayText}</p>}
                         <TicketImageAttachment
@@ -808,9 +809,6 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           senderName={reply.senderName}
                           onPreview={openPreview(imageSources)}
                         />
-                        <p className="mt-2 border-t border-white/10 pt-1 text-[10px] text-slate-400">
-                          {formatIranianDateTime(reply.createdAt)}
-                        </p>
                       </div>
                     </div>
                   );

@@ -1831,9 +1831,24 @@ function testEveryMessageAndPaymentCarriesItsExactDate() {
     /formatIranianDateTime\(msg\.createdAt\)/.test(customSource),
     'Every custom-order chat message must show its exact date.',
   );
+  // A bare clock time must not survive anywhere a message is shown.
   assert.ok(
-    !/toLocaleTimeString/.test(supportSource.replace(/toLocaleTimeString[^\n]*hour[^\n]*\n/g, '')),
-    'Ticket timestamps must not rely on a bare clock time alone.',
+    !/toLocaleTimeString/.test(supportSource) && !/toLocaleTimeString/.test(customSource),
+    'Message timestamps must not rely on a bare clock time.',
+  );
+  // The customer sees dates too: in the bot's ticket list and in the reply.
+  const handlersSource = read('../src/telegramHandlers.ts');
+  assert.ok(
+    /formatIranianDateTime\(ticket\.createdAt\)/.test(handlersSource),
+    "The customer's ticket list in the bot must show an exact date.",
+  );
+  assert.ok(
+    !/toLocaleDateString\('fa-IR'\)/.test(handlersSource),
+    'The bot must not print a timezone-less date.',
+  );
+  assert.ok(
+    /🕑 \$\{formatIranianDateTime\(newReply\.createdAt\)\}/.test(serverSource),
+    'A support reply delivered to Telegram must carry its exact date.',
   );
 
   // Orders and payments must expose the whole lifecycle, not just creation.

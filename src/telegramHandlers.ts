@@ -2,6 +2,7 @@
 // Called from server.ts polling loop
 import { t as botText } from './data/botMessages';
 import { upsertBotCustomer } from './utils/customers';
+import { formatIranianDateTime } from './utils/iranianDate';
 
 interface SimpleMap<V> {
   get(key: string): V | undefined;
@@ -397,7 +398,12 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
       message += `${idx + 1}. <b>${ticket.subject || 'بدون عنوان'}</b>\n`;
       message += `   🔖 کد: <code>${ticket.ticketNumber}</code>\n`;
       message += `   ${statusEmoji} وضعیت: ${statusText}\n`;
-      message += `   📅 تاریخ: ${new Date(ticket.createdAt).toLocaleDateString('fa-IR')}\n\n`;
+      message += `   📅 تاریخ ثبت: ${formatIranianDateTime(ticket.createdAt)}\n`;
+      const lastReply = ticket.replies?.[ticket.replies.length - 1];
+      if (lastReply?.createdAt && lastReply.createdAt !== ticket.createdAt) {
+        message += `   🕑 آخرین پیام: ${formatIranianDateTime(lastReply.createdAt)}\n`;
+      }
+      message += '\n';
     });
     
     if (myTickets.length > 10) {
@@ -2035,7 +2041,7 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: ticket.customerTelegramId,
-              text: `📬 <b>پاسخ مدیریت به تیکت پشتیبانی #${ticket.ticketNumber}:</b>\n\n💬 <b>موضوع:</b> ${ticket.subject}\n──────────────\n${text}\n──────────────\n<i>${storeNameOf(ctx)}</i>`,
+              text: `📬 <b>پاسخ مدیریت به تیکت پشتیبانی #${ticket.ticketNumber}:</b>\n\n💬 <b>موضوع:</b> ${ticket.subject}\n──────────────\n${text}\n──────────────\n🕑 ${formatIranianDateTime(new Date().toISOString())}\n<i>${storeNameOf(ctx)}</i>`,
               parse_mode: 'HTML'
             })
           });

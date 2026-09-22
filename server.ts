@@ -51,7 +51,7 @@ import { resolveUniqueOrderNumber } from './src/utils/orderNumber';
 import { collectCustomerTags, resolveBroadcastAudience } from './src/utils/broadcastAudience';
 import { DATA_DIR, loadData, saveData, PersistedData } from './src/persistData';
 import { getPanelCredentials, omitPanelPassword } from './src/utils/panelAuth';
-import { getIranianPersianDate, normalizeIranianDeliveryDate, normalizeIranianDeliveryTime, formatIranianDeliveryDate, formatIranianDeliveryTime } from './src/utils/iranianDate';
+import { getIranianPersianDate, normalizeIranianDeliveryDate, normalizeIranianDeliveryTime, formatIranianDeliveryDate, formatIranianDeliveryTime, formatIranianDateTime } from './src/utils/iranianDate';
 import { escapeTelegramHtml, formatCustomOrderTrackingMessage } from './src/utils/customOrderTracking';
 import {
   buildAllInvoices,
@@ -732,7 +732,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-22-exact-dates-everywhere';
+const APP_REVISION = '2026-09-22-message-dates-visible';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -1617,7 +1617,7 @@ async function startServer() {
       try {
         const botToken = getTelegramBotToken();
         const chatId = supportTickets[ticketIndex].customerTelegramId;
-        const caption = `👩‍🍳 <b>پاسخ پشتیبانی ${storeName()} (تیکت ${supportTickets[ticketIndex].ticketNumber}):</b>${replyText ? `\n\n${replyText}` : ''}`;
+        const caption = `👩‍🍳 <b>پاسخ پشتیبانی ${storeName()} (تیکت ${supportTickets[ticketIndex].ticketNumber}):</b>${replyText ? `\n\n${replyText}` : ''}\n\n🕑 ${formatIranianDateTime(newReply.createdAt)}`;
         const followUp = '<i>در صورت نیاز به توضیحات بیشتر می‌توانید پاسخ دهید یا بیخیال شوید.</i>';
         const replyKeyboard = {
           inline_keyboard: [

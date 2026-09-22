@@ -20,6 +20,40 @@ import {
 } from 'lucide-react';
 import { BotSettings } from '../types';
 
+// Shows which deployment is actually running, so a stale deploy is obvious
+// instead of looking like a change that "didn't apply".
+const BuildStamp: React.FC<{ expanded: boolean }> = ({ expanded }) => {
+  const [revision, setRevision] = React.useState<string | null>(null);
+  const [stale, setStale] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(h => {
+        if (cancelled) return;
+        setRevision(typeof h?.appRevision === 'string' ? h.appRevision : null);
+        setStale(h?.clientMode === 'live-source');
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!revision) return null;
+
+  return (
+    <div
+      dir="ltr"
+      title={`نسخهٔ در حال اجرا: ${revision}${stale ? ' — هشدار: پنل از سورس زنده سرو می‌شود' : ''}`}
+      className={`mb-1 truncate rounded-lg px-3 py-1 text-[9px] font-mono transition-opacity duration-200 ${
+        stale ? 'bg-amber-950/40 text-amber-300' : 'text-slate-600'
+      } ${expanded ? 'opacity-100' : 'opacity-0'}`}
+    >
+      {stale ? '⚠ ' : ''}{revision}
+    </div>
+  );
+};
+
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: any) => void;
@@ -142,6 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="shrink-0 border-t border-slate-800 p-2">
+        <BuildStamp expanded={expanded} />
         <button
           type="button"
           onClick={onLogout}

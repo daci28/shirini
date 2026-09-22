@@ -1762,6 +1762,41 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
  * Images the shop attaches must be reachable by two different consumers: the
  * browser rendering the panel, and Telegram fetching them from its own servers.
  */
+function testDeployBuildsTheAppExactlyOnce() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const pkg = JSON.parse(read('../package.json'));
+  const scripts = pkg.scripts || {};
+
+  // Railway ran `npm run build` four times per deploy (nixpacks build phase +
+  // postinstall + Procfile + prestart). Each build peaks around 340MB, so the
+  // container hit its memory ceiling and kept serving the previous version —
+  // which looks exactly like "my change didn't apply".
+  assert.ok(!scripts.postinstall, 'postinstall must not rebuild: the build phase already does.');
+  assert.ok(!scripts.prestart, 'prestart must not rebuild: the build phase already does.');
+
+  const procfile = read('../Procfile');
+  assert.ok(
+    !/npm run build/.test(procfile),
+    'The Procfile must not rebuild; it should only start the server.',
+  );
+  assert.ok(/npm start/.test(procfile), 'The Procfile must start the server.');
+
+  // Start still has to work on a cold container with no build cache.
+  assert.ok(
+    /dist\/server\.cjs/.test(scripts.start) && /npm run build/.test(scripts.start),
+    'start must fall back to building when dist/ is absent.',
+  );
+
+  // The running revision must be visible in the panel, so a stale deployment is
+  // identifiable at a glance rather than mistaken for a missing change.
+  const header = read('../src/components/Header.tsx');
+  assert.ok(
+    /\/api\/health/.test(header) && /appRevision/.test(header),
+    'The panel must display the running revision from /api/health.',
+  );
+  console.log('✅ a deploy builds the app exactly once and shows its revision');
+}
+
 function testEveryMessageAndPaymentCarriesItsExactDate() {
   const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
   const typesSource = read('../src/types.ts');
@@ -2213,6 +2248,7 @@ async function main() {
   testJustUploadedPicturePreviewsImmediately();
   testSingleCustomerMessageIsNotReportedAsABroadcast();
   testEveryMessageAndPaymentCarriesItsExactDate();
+  testDeployBuildsTheAppExactlyOnce();
   testUploadsReportTheirProgress();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();

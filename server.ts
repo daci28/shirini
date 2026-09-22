@@ -732,7 +732,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-22-single-customer-message-report';
+const APP_REVISION = '2026-09-22-exact-dates-everywhere';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -1035,6 +1035,7 @@ async function startServer() {
     };
     if (newOrder.paymentReceiptImage && !newOrder.receiptReviewStatus) {
       newOrder.receiptReviewStatus = 'submitted';
+      newOrder.receiptSubmittedAt = newOrder.receiptSubmittedAt || new Date().toISOString();
     }
     orders.unshift(newOrder);
 
@@ -2025,6 +2026,7 @@ async function startServer() {
     // approval, receipt, or rejection reason.
     order.isPrepaymentPaid = false;
     order.prepaymentStatus = order.prepaymentAmount > 0 ? 'awaiting_receipt' : 'not_required';
+    order.prepaymentRequestedAt = new Date().toISOString();
     delete order.paymentReceiptImage;
     delete order.prepaymentSubmittedAt;
     delete order.prepaymentReviewedAt;
@@ -2574,6 +2576,7 @@ async function startServer() {
       status: 'submitted',
       receiptImage: photoFileId,
       notes: 'فیش واریزی ارسال‌شده توسط مشتری در تلگرام',
+      receiptSubmittedAt: now,
       createdAt: now,
       updatedAt: now,
     };
@@ -2811,6 +2814,7 @@ async function startServer() {
       receiptImage: registeredReceiptImage || undefined,
       transactionReference: trimInvoiceText(paymentInput.transactionReference, 240) || undefined,
       notes: trimInvoiceText(paymentInput.notes, 1000) || undefined,
+      receiptSubmittedAt: registeredReceiptImage ? now : undefined,
       createdAt: now,
       updatedAt: now,
       paidAt: paymentStatus === 'confirmed' ? now : undefined,
@@ -5342,6 +5346,7 @@ async function startServer() {
             const isReplacement = Boolean(order.paymentReceiptImage);
             order.paymentReceiptImage = photoFileId;
             order.receiptReviewStatus = 'submitted';
+            order.receiptSubmittedAt = new Date().toISOString();
             delete order.receiptReviewedAt;
             delete order.receiptReviewReason;
             order.status = 'paid_checking';
@@ -5413,6 +5418,7 @@ async function startServer() {
           const isReplacement = Boolean(pendingOrder.paymentReceiptImage);
           pendingOrder.paymentReceiptImage = incomingImageFileId;
           pendingOrder.receiptReviewStatus = 'submitted';
+          pendingOrder.receiptSubmittedAt = new Date().toISOString();
           delete pendingOrder.receiptReviewedAt;
           delete pendingOrder.receiptReviewReason;
           pendingOrder.status = 'paid_checking';

@@ -84,6 +84,8 @@ export interface Order {
   paymentReceiptImage?: string;
   /** Review state of the most recently submitted receipt, retained with the image for audit. */
   receiptReviewStatus?: 'submitted' | 'confirmed' | 'rejected';
+  /** When the customer sent the receipt, kept separate from the review time. */
+  receiptSubmittedAt?: string;
   receiptReviewedAt?: string;
   receiptReviewReason?: string;
   notes?: string;
@@ -371,6 +373,8 @@ export interface InvoicePayment {
   receiptImage?: string;
   transactionReference?: string;
   notes?: string;
+  /** When the customer sent the receipt, kept separate from the review time. */
+  receiptSubmittedAt?: string;
   /** Audit information for a customer-submitted receipt reviewed in the panel. */
   reviewedAt?: string;
   reviewedBy?: string;
@@ -480,6 +484,8 @@ export interface CustomPastryOrder {
   isPrepaymentPaid?: boolean;
   /** Independent receipt-review lifecycle; uploading a receipt is never an approval. */
   prepaymentStatus?: CustomPrepaymentReviewStatus;
+  /** When the shop set the price/deposit and asked the customer to pay. */
+  prepaymentRequestedAt?: string;
   prepaymentSubmittedAt?: string;
   prepaymentReviewedAt?: string;
   prepaymentRejectReason?: string;

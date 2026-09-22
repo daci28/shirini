@@ -1762,6 +1762,106 @@ function testAdminCanReplyWithSeveralPhotosAndBrowseThem() {
  * Images the shop attaches must be reachable by two different consumers: the
  * browser rendering the panel, and Telegram fetching them from its own servers.
  */
+function testEveryMessageAndPaymentCarriesItsExactDate() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const typesSource = read('../src/types.ts');
+  const serverSource = read('../server.ts');
+  const supportSource = read('../src/components/SupportManager.tsx');
+  const orderSource = read('../src/components/OrderManager.tsx');
+  const customSource = read('../src/components/CustomPastryManager.tsx');
+  const invoiceSource = read('../src/components/InvoiceManager.tsx');
+
+  // Each moment of a payment is its own fact: when the customer sent the
+  // receipt is not the same as when the shop reviewed it.
+  assert.ok(
+    /receiptSubmittedAt\?: string;/.test(typesSource),
+    'An order must record when its receipt was submitted.',
+  );
+  assert.ok(
+    /prepaymentRequestedAt\?: string;/.test(typesSource),
+    'A custom order must record when the deposit was requested.',
+  );
+
+  // Recording has to actually happen on every path a receipt can arrive by.
+  assert.ok(
+    (serverSource.match(/receiptSubmittedAt = new Date\(\)\.toISOString\(\)/g) || []).length >= 2,
+    'Every receipt upload path must stamp the submission time.',
+  );
+  assert.ok(
+    /newOrder\.receiptSubmittedAt = newOrder\.receiptSubmittedAt \|\| new Date/.test(serverSource),
+    'An order created with a receipt must stamp the submission time.',
+  );
+  assert.ok(
+    /receiptSubmittedAt: now/.test(serverSource),
+    'An invoice payment receipt must stamp the submission time.',
+  );
+  assert.ok(
+    /order\.prepaymentRequestedAt = new Date\(\)\.toISOString\(\)/.test(serverSource),
+    'Quoting a custom order must stamp when the deposit was requested.',
+  );
+
+  // The exact stamp has to be on screen, in the Iranian calendar and timezone.
+  for (const [name, source] of [
+    ['SupportManager', supportSource],
+    ['OrderManager', orderSource],
+    ['CustomPastryManager', customSource],
+    ['InvoiceManager', invoiceSource],
+  ] as Array<[string, string]>) {
+    assert.ok(
+      source.includes('formatIranianDateTime'),
+      `${name} must render dates through the Iranian date formatter.`,
+    );
+  }
+
+  // A bare clock time is ambiguous the moment a thread spans two days, which
+  // is exactly what the ticket view used to show.
+  assert.ok(
+    /formatIranianDateTime\(reply\.createdAt\)/.test(supportSource),
+    'Every ticket reply must show its own exact date.',
+  );
+  assert.ok(
+    /formatIranianDateTime\(selectedTicket\.createdAt\)/.test(supportSource),
+    'The opening ticket message must show its exact date.',
+  );
+  assert.ok(
+    /formatIranianDateTime\(ticket\.createdAt\)/.test(supportSource),
+    'The ticket list must show a date, not only a time.',
+  );
+  assert.ok(
+    /formatIranianDateTime\(msg\.createdAt\)/.test(customSource),
+    'Every custom-order chat message must show its exact date.',
+  );
+  assert.ok(
+    !/toLocaleTimeString/.test(supportSource.replace(/toLocaleTimeString[^\n]*hour[^\n]*\n/g, '')),
+    'Ticket timestamps must not rely on a bare clock time alone.',
+  );
+
+  // Orders and payments must expose the whole lifecycle, not just creation.
+  assert.ok(
+    /formatIranianDateTime\(order\.receiptSubmittedAt\)/.test(orderSource)
+      && /formatIranianDateTime\(order\.receiptReviewedAt\)/.test(orderSource),
+    'An order must show when its receipt arrived and when it was reviewed.',
+  );
+  assert.ok(
+    /formatIranianDateTime\(order\.prepaymentRequestedAt\)/.test(customSource)
+      && /formatIranianDateTime\(order\.prepaymentSubmittedAt\)/.test(customSource)
+      && /formatIranianDateTime\(order\.prepaymentReviewedAt\)/.test(customSource),
+    'A custom order must show the whole deposit timeline.',
+  );
+  assert.ok(
+    /formatIranianDateTime\(payment\.receiptSubmittedAt\)/.test(invoiceSource),
+    'An invoice payment must show when its receipt was submitted.',
+  );
+
+  // formatDatePersian has no timezone, so it can name the wrong day in Tehran.
+  assert.ok(
+    !/formatDatePersian/.test(orderSource),
+    'Order dates must use the timezone-aware Iranian formatter.',
+  );
+
+  console.log('✅ messages, orders, receipts and payments all carry an exact date');
+}
+
 function testSingleCustomerMessageIsNotReportedAsABroadcast() {
   const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
 
@@ -2097,6 +2197,7 @@ async function main() {
   testShopAttachedImagesAreReachable();
   testJustUploadedPicturePreviewsImmediately();
   testSingleCustomerMessageIsNotReportedAsABroadcast();
+  testEveryMessageAndPaymentCarriesItsExactDate();
   testUploadsReportTheirProgress();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();

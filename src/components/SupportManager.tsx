@@ -30,6 +30,7 @@ import { ZoomableImageModal } from './ZoomableImageModal';
 import { CustomerBroadcastPanel } from './CustomerBroadcastPanel';
 import UploadProgressBar from './UploadProgressBar';
 import { uploadImagesWithProgress, type UploadProgress } from '../utils/uploadWithProgress';
+import { formatIranianDateTime } from '../utils/iranianDate';
 
 interface SupportManagerProps {
   tickets: SupportTicket[];
@@ -616,7 +617,7 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                     </p>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-800/80">
-                      <span>{new Date(ticket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span>{formatIranianDateTime(ticket.createdAt)}</span>
                       <span className="flex items-center gap-1 text-slate-400">
                         <MessageSquare className="w-3 h-3 text-purple-400" />
                         <span>{ticket.replies.length} پیام</span>
@@ -746,6 +747,9 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           <span>{new Date(selectedTicket.createdAt).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                         {selectedTicket.message && <p className="whitespace-pre-line">{selectedTicket.message}</p>}
+                        <p className="mt-2 border-t border-white/10 pt-1 text-[10px] text-slate-400">
+                          {formatIranianDateTime(selectedTicket.createdAt)}
+                        </p>
                         {(() => {
                           const openingImages = collectTicketImageSources(
                             selectedTicket.cakePhotos,
@@ -804,6 +808,9 @@ export const SupportManager: React.FC<SupportManagerProps> = ({
                           senderName={reply.senderName}
                           onPreview={openPreview(imageSources)}
                         />
+                        <p className="mt-2 border-t border-white/10 pt-1 text-[10px] text-slate-400">
+                          {formatIranianDateTime(reply.createdAt)}
+                        </p>
                       </div>
                     </div>
                   );

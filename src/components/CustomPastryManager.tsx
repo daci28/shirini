@@ -710,6 +710,33 @@ export const CustomPastryManager: React.FC<CustomPastryManagerProps> = ({
                         {prepaymentStatus === 'approved' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : prepaymentStatus === 'pending_confirmation' ? <Clock className="w-4 h-4 shrink-0" /> : <CreditCard className="w-4 h-4 shrink-0" />}
                         <span>{customPrepaymentStatusLabels[prepaymentStatus]}</span>
                       </div>
+                      {/* Exact moments of the deposit lifecycle, so the shop can
+                          see when it quoted, when the receipt arrived, and when
+                          it was reviewed. */}
+                      {(order.prepaymentRequestedAt || order.prepaymentSubmittedAt || order.prepaymentReviewedAt) && (
+                        <div className="space-y-0.5 rounded-lg border border-slate-800 bg-slate-950/50 p-2 text-[10px] text-slate-400">
+                          {order.prepaymentRequestedAt && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span>اعلام قیمت و بیعانه:</span>
+                              <span className="font-semibold text-slate-300">{formatIranianDateTime(order.prepaymentRequestedAt)}</span>
+                            </div>
+                          )}
+                          {order.prepaymentSubmittedAt && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span>ارسال فیش بیعانه:</span>
+                              <span className="font-semibold text-amber-300">{formatIranianDateTime(order.prepaymentSubmittedAt)}</span>
+                            </div>
+                          )}
+                          {order.prepaymentReviewedAt && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span>بررسی فیش:</span>
+                              <span className={`font-semibold ${prepaymentStatus === 'rejected' ? 'text-rose-300' : 'text-emerald-300'}`}>
+                                {formatIranianDateTime(order.prepaymentReviewedAt)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {isPrepaymentPending && (
                         <p className="text-[10px] leading-relaxed text-amber-300">فیش دریافت شده است؛ قبل از شروع پخت، آن را از بخش «فیش واریزی بیعانه» تأیید یا رد کنید.</p>
                       )}
@@ -952,6 +979,9 @@ export const CustomPastryManager: React.FC<CustomPastryManagerProps> = ({
                           />
                         </button>
                       )}
+                      <p className="mt-2 border-t border-white/10 pt-1 text-[10px] text-slate-400">
+                        {formatIranianDateTime(msg.createdAt)}
+                      </p>
                     </div>
                   );
                 })

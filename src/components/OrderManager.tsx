@@ -18,7 +18,8 @@ import {
   ZoomIn
 } from 'lucide-react';
 import { CustomerUser, Order, OrderStatus } from '../types';
-import { formatPrice, toPersianDigits, formatDatePersian } from '../utils/formatters';
+import { formatPrice, toPersianDigits } from '../utils/formatters';
+import { formatIranianDateTime } from '../utils/iranianDate';
 import { matchesSearchValues, normalizeSearchValue } from '../utils/search';
 import { resolveTelegramImageSource } from '../utils/telegramImage';
 import { ZoomableImageModal } from './ZoomableImageModal';
@@ -308,7 +309,7 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                       </div>
                       <p className="min-w-0 text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                         <Calendar className="w-3.5 h-3.5 shrink-0 text-slate-500" />
-                        <span className="min-w-0 break-words">ثبت شده در: {formatDatePersian(order.createdAt)}</span>
+                        <span className="min-w-0 break-words">ثبت شده در: {formatIranianDateTime(order.createdAt)}</span>
                       </p>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
@@ -447,6 +448,25 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                           <Eye className="w-4 h-4" />
                           <span>مشاهده، زوم و بررسی فیش مشتری</span>
                         </button>
+
+                        {(order.receiptSubmittedAt || order.receiptReviewedAt) && (
+                          <div className="space-y-0.5 rounded-lg border border-slate-700 bg-slate-950/50 p-2 text-[10px] text-slate-400">
+                            {order.receiptSubmittedAt && (
+                              <div className="flex items-center justify-between gap-2">
+                                <span>ارسال فیش توسط مشتری:</span>
+                                <span className="font-semibold text-amber-300">{formatIranianDateTime(order.receiptSubmittedAt)}</span>
+                              </div>
+                            )}
+                            {order.receiptReviewedAt && (
+                              <div className="flex items-center justify-between gap-2">
+                                <span>بررسی فیش:</span>
+                                <span className={`font-semibold ${order.receiptReviewStatus === 'rejected' ? 'text-rose-300' : 'text-emerald-300'}`}>
+                                  {formatIranianDateTime(order.receiptReviewedAt)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {order.receiptReviewStatus === 'rejected' && (
                           <p className="rounded-lg border border-rose-800/60 bg-rose-950/30 px-2.5 py-2 text-[10px] leading-5 text-rose-200">فیش قبلی رد شده است؛ برای بررسی مجدد، منتظر ارسال فیش جدید از مشتری باشید.</p>

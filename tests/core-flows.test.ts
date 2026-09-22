@@ -1805,6 +1805,46 @@ function testDeployBuildsTheAppExactlyOnce() {
   console.log('✅ a deploy builds the app exactly once and shows its revision');
 }
 
+function testAMessageToCustomersIsSignedByTheShop() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+
+  const route = serverSource.split("app.post('/api/telegram/broadcast'")[1] || '';
+  assert.ok(route, 'The broadcast route must exist.');
+  const body = route.split('app.post(')[0];
+
+  // A bare message gives the customer no idea who wrote it, so the shop signs
+  // and dates every message it sends, exactly like a support reply.
+  assert.ok(
+    /پیام از طرف \$\{escapeTelegramHtml\(shopSenderName\(\)\)\}/.test(body),
+    'A message to customers must be signed with the shop name from settings.',
+  );
+  assert.ok(
+    /🕑 \$\{formatIranianDateTime\(/.test(body),
+    'A message to customers must carry its exact date.',
+  );
+
+  // The signed wrapper is sent with parse_mode HTML, so the admin's own words
+  // must be escaped or a stray '<' makes Telegram reject the whole message.
+  assert.ok(
+    /\$\{escapeTelegramHtml\(text\)\}/.test(body),
+    "The admin's text must be escaped before going into the HTML wrapper.",
+  );
+
+  // Both plain messages and photo captions must carry the signature.
+  assert.ok(
+    /caption: announcement/.test(body) && /text: announcement/.test(body),
+    'Both the photo caption and the plain message must use the signed text.',
+  );
+
+  // The panel thread must keep the admin's raw words, not the wrapper.
+  assert.ok(
+    /message: text,/.test(body) && /text: text,/.test(body),
+    'The stored ticket must keep the raw message, not the decorated one.',
+  );
+  console.log('✅ a message to customers is signed by the shop and dated');
+}
+
 function testEveryMessageAndPaymentCarriesItsExactDate() {
   const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
   const typesSource = read('../src/types.ts');
@@ -2256,6 +2296,7 @@ async function main() {
   testJustUploadedPicturePreviewsImmediately();
   testSingleCustomerMessageIsNotReportedAsABroadcast();
   testEveryMessageAndPaymentCarriesItsExactDate();
+  testAMessageToCustomersIsSignedByTheShop();
   testDeployBuildsTheAppExactlyOnce();
   testUploadsReportTheirProgress();
   testShopNameComesFromSettingsEverywhere();

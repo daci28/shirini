@@ -732,7 +732,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-22-message-dates-visible';
+const APP_REVISION = '2026-09-22-signed-customer-messages';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -3099,10 +3099,19 @@ async function startServer() {
             }
           : undefined;
 
+        // A bare message looks like it came from nowhere, so every message the
+        // shop sends is signed and dated the same way a support reply is.
+        const announcement =
+          `📣 <b>پیام از طرف ${escapeTelegramHtml(shopSenderName())}</b>\n` +
+          `──────────────\n` +
+          `${escapeTelegramHtml(text)}\n` +
+          `──────────────\n` +
+          `🕑 ${formatIranianDateTime(new Date().toISOString())}`;
+
         const endpoint = photo ? 'sendPhoto' : 'sendMessage';
         const payload: Record<string, unknown> = photo
-          ? { chat_id: customer.telegramId, photo, caption: text, parse_mode: 'HTML' }
-          : { chat_id: customer.telegramId, text, parse_mode: 'HTML' };
+          ? { chat_id: customer.telegramId, photo, caption: announcement, parse_mode: 'HTML' }
+          : { chat_id: customer.telegramId, text: announcement, parse_mode: 'HTML' };
         if (replyMarkup) payload.reply_markup = replyMarkup;
 
         const tgRes = await fetch(`https://api.telegram.org/bot${token}/${endpoint}`, {

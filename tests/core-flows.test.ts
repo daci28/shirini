@@ -1845,6 +1845,77 @@ function testAMessageToCustomersIsSignedByTheShop() {
   console.log('✅ a message to customers is signed by the shop and dated');
 }
 
+function testGroupReportsNeverFailSilently() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+
+  const fn = serverSource.split('async function sendToTelegramTopic(')[1] || '';
+  assert.ok(fn, 'The group report helper must exist.');
+  const body = fn.split('// Core function to automatically setup forum topics')[0];
+
+  // The bug: every Telegram rejection was swallowed, so a group that received
+  // nothing looked perfectly healthy and there was nothing to debug with.
+  assert.ok(
+    /markFailed\(/.test(body) && /delivery failed/.test(body),
+    'A rejected group report must be logged, not swallowed.',
+  );
+  // Every terminal branch must end in a verdict: the last attempt of the text
+  // path and the catch block both have to report the failure.
+  assert.ok(
+    /if \(plainData\?\.ok\) \{ markDelivered\(\); return; \}\s*\n\s*markFailed\(/.test(body),
+    'When the final fallback fails the report must be marked failed.',
+  );
+  assert.ok(
+    /catch \(err\) \{\s*\n\s*markFailed\(/.test(body),
+    'A thrown error must mark the report failed, not be swallowed.',
+  );
+
+  // lastReportTime was written before the send, so the panel claimed a report
+  // had been delivered even when Telegram refused it.
+  // It must only ever be written inside markDelivered, never at the top of the
+  // function where it used to run before anything was sent.
+  const stampWrites = body.match(/lastReportTime = /g) || [];
+  assert.strictEqual(
+    stampWrites.length, 1,
+    'lastReportTime must be written in exactly one place (markDelivered).',
+  );
+  const markDeliveredBody = (body.split('const markDelivered = () => {')[1] || '').split('};')[0];
+  assert.ok(
+    /lastReportTime = /.test(markDeliveredBody),
+    'A report must not be marked delivered before Telegram accepts it.',
+  );
+  assert.ok(
+    /markDelivered\(\); return;/.test(body),
+    'Delivery must be recorded only on an ok response.',
+  );
+
+  // Every success path (album, photo, document, text, retries) must record it.
+  assert.ok(
+    !/\?\.ok\) return;/.test(body),
+    'Every successful send path must mark the report as delivered.',
+  );
+
+  // The failure has to survive a restart and reach the panel.
+  // Both verdicts must be persisted, or the panel loses them on restart.
+  const markFailedBody = (body.split('const markFailed = (reason: string) => {')[1] || '').split('};')[0];
+  assert.ok(
+    /lastReportError = reason/.test(markFailedBody) && /saveSettings\(botSettings\)/.test(markFailedBody),
+    'The delivery error must be persisted so the panel can show it.',
+  );
+  assert.ok(
+    /saveSettings\(botSettings\)/.test(markDeliveredBody),
+    'A successful report must persist that it cleared the error.',
+  );
+  const settingsUi = read('../src/components/BotSettings.tsx');
+  assert.ok(
+    /lastReportError/.test(settingsUi),
+    'The panel must show why a group report failed.',
+  );
+  const types = read('../src/types.ts');
+  assert.ok(/lastReportError\?: string/.test(types), 'ForumTopicConfig must carry the error.');
+  console.log('✅ a failed group report is logged, stored and shown');
+}
+
 function testEveryMessageAndPaymentCarriesItsExactDate() {
   const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
   const typesSource = read('../src/types.ts');
@@ -2296,6 +2367,7 @@ async function main() {
   testJustUploadedPicturePreviewsImmediately();
   testSingleCustomerMessageIsNotReportedAsABroadcast();
   testEveryMessageAndPaymentCarriesItsExactDate();
+  testGroupReportsNeverFailSilently();
   testAMessageToCustomersIsSignedByTheShop();
   testDeployBuildsTheAppExactlyOnce();
   testUploadsReportTheirProgress();

@@ -732,7 +732,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-22-signed-customer-messages';
+const APP_REVISION = '2026-09-23-group-reports-never-silent';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -3192,10 +3192,19 @@ async function startServer() {
     const topic = botSettings.forumTopics?.find((t) => t.key === key);
     if (topic && (topic.enabled === false || topic.autoReport === false)) return;
 
-    if (topic) {
+    const markDelivered = () => {
+      if (!topic) return;
       topic.lastReportTime = new Date().toISOString();
       topic.lastReportSummary = messageText.replace(/<[^>]*>?/gm, '').slice(0, 120);
-    }
+      topic.lastReportError = undefined;
+      saveSettings(botSettings);
+    };
+    const markFailed = (reason: string) => {
+      console.error(`[ForumTopic:${key}] delivery failed: ${reason}`);
+      if (!topic) return;
+      topic.lastReportError = reason;
+      saveSettings(botSettings);
+    };
 
     const token = getTelegramBotToken();
     if (!token) {
@@ -3233,7 +3242,7 @@ async function startServer() {
           body: JSON.stringify(albumPayload),
         });
         const albumData = (await albumRes.json().catch(() => ({}))) as any;
-        if (albumData?.ok) return;
+        if (albumData?.ok) { markDelivered(); return; }
 
         if (threadId) {
           delete albumPayload.message_thread_id;
@@ -3243,7 +3252,7 @@ async function startServer() {
             body: JSON.stringify(albumPayload),
           });
           const retryData = (await retryRes.json().catch(() => ({}))) as any;
-          if (retryData?.ok) return;
+          if (retryData?.ok) { markDelivered(); return; }
         }
         console.error(`[ForumTopic:${key}] sendMediaGroup failed, falling back to a single photo.`);
       } catch (albumErr) {
@@ -3278,7 +3287,7 @@ async function startServer() {
                 body: formData,
               });
               const photoData = (await photoRes.json().catch(() => ({}))) as any;
-              if (photoData?.ok) return;
+              if (photoData?.ok) { markDelivered(); return; }
 
               // If threadId failed, retry without threadId
               if (threadId) {
@@ -3292,7 +3301,7 @@ async function startServer() {
                   body: retryForm,
                 });
                 const retryData = (await retryRes.json().catch(() => ({}))) as any;
-                if (retryData?.ok) return;
+                if (retryData?.ok) { markDelivered(); return; }
               }
             }
           } catch (formErr) {
@@ -3315,7 +3324,7 @@ async function startServer() {
               body: JSON.stringify(payload),
             });
             const photoData = (await photoRes.json().catch(() => ({}))) as any;
-            if (photoData?.ok) return;
+            if (photoData?.ok) { markDelivered(); return; }
 
             // If threadId failed, retry without threadId
             if (threadId) {
@@ -3326,7 +3335,7 @@ async function startServer() {
                 body: JSON.stringify(payload),
               });
               const retryData = (await retryRes.json().catch(() => ({}))) as any;
-              if (retryData?.ok) return;
+              if (retryData?.ok) { markDelivered(); return; }
             }
 
             // If sendPhoto failed (e.g. document file_id), try sendDocument
@@ -3344,7 +3353,7 @@ async function startServer() {
                 body: JSON.stringify(docPayload),
               });
               const docData = (await docRes.json().catch(() => ({}))) as any;
-              if (docData?.ok) return;
+              if (docData?.ok) { markDelivered(); return; }
             } catch { /* ignore document fallback error */ }
           } catch (jsonErr) {
             console.error(`[ForumTopic:${key}] JSON sendPhoto error:`, jsonErr);
@@ -3366,7 +3375,8 @@ async function startServer() {
         body: JSON.stringify(textPayload),
       });
       const data = (await res.json().catch(() => ({}))) as any;
-      if (data?.ok) return;
+      if (data?.ok) { markDelivered(); return; }
+      let lastError = String(data?.description || 'unknown error');
 
       // If failed with threadId, retry without threadId
       if (threadId) {
@@ -3377,7 +3387,8 @@ async function startServer() {
           body: JSON.stringify(textPayload),
         });
         const retryData = (await retryRes.json().catch(() => ({}))) as any;
-        if (retryData?.ok) return;
+        if (retryData?.ok) { markDelivered(); return; }
+        lastError = String(retryData?.description || lastError);
       }
 
       // Plain text fallback if HTML parse failed
@@ -3385,13 +3396,16 @@ async function startServer() {
         chat_id: groupId,
         text: messageText.replace(/<[^>]+>/g, ''),
       };
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const plainRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(plainPayload),
       });
+      const plainData = (await plainRes.json().catch(() => ({}))) as any;
+      if (plainData?.ok) { markDelivered(); return; }
+      markFailed(String(plainData?.description || lastError));
     } catch (err) {
-      console.error(`Error sending to topic ${key}:`, err);
+      markFailed(err instanceof Error ? err.message : String(err));
     }
   }
 

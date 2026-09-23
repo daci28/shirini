@@ -116,6 +116,8 @@ export interface ForumTopicConfig {
   description: string;
   lastReportTime?: string;
   lastReportSummary?: string;
+  /** Why the last report could not be delivered, so a silent failure is visible. */
+  lastReportError?: string;
 }
 
 /** A channel or group the customer must join before using the bot. */

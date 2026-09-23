@@ -571,6 +571,16 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
                     </div>
 
                     <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                      {topic.lastReportError && (
+                        <div className="text-[10px] text-rose-200 bg-rose-950/40 p-2 rounded-lg border border-rose-800/60">
+                          <span className="font-semibold">⚠️ گزارش ارسال نشد: </span>
+                          <span className="break-words">{topic.lastReportError}</span>
+                          <span className="block mt-1 text-rose-300/80">
+                            معمولاً یعنی تاپیک پاک شده یا ربات ادمین گروه نیست. در گروه دستور /setup_topics را بزنید.
+                          </span>
+                        </div>
+                      )}
+
                       {topic.lastReportSummary && (
                         <div className="text-[10px] text-slate-400 bg-slate-900/80 p-2 rounded-lg border border-slate-800 truncate">
                           <span className="text-slate-400 font-semibold">آخرین اعلان: </span>

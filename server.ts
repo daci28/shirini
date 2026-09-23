@@ -625,6 +625,58 @@ function storeName(): string {
   return String(botSettings.storeName || '').trim() || 'فروشگاه';
 }
 
+/**
+ * Replace the message the customer just tapped, instead of pushing a new one
+ * underneath it. Navigating between screens then feels like one screen that
+ * changes, rather than a growing stack of messages.
+ *
+ * Editing fails legitimately in a few cases — the message is too old to edit,
+ * it carried a photo instead of text, or Telegram rejects an identical body —
+ * so fall back to sending a fresh message and never leave the customer with
+ * nothing on screen.
+ */
+async function replaceTelegramMessage(
+  token: string,
+  chatId: string,
+  messageId: number | undefined,
+  text: string,
+  keyboard: any[][],
+): Promise<void> {
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: keyboard },
+  };
+
+  if (messageId) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, message_id: messageId }),
+      });
+      const body = await res.json().catch(() => null);
+      if (body?.ok) return;
+      // "message is not modified" means the screen already shows this exact
+      // content — the customer is looking at the right thing, so stop here
+      // rather than duplicating it.
+      if (typeof body?.description === 'string' && body.description.includes('message is not modified')) {
+        return;
+      }
+      console.error(`[telegram] edit failed (${body?.description || 'unknown'}); sending a new message instead`);
+    } catch (err) {
+      console.error('[telegram] edit threw; sending a new message instead:', err);
+    }
+  }
+
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 /** Customer-facing label for an order status, shared by every bot screen. */
 function orderStatusLabel(status: string): string {
   const labels: Record<string, string> = {
@@ -746,7 +798,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-23-orders-listed-by-code';
+const APP_REVISION = '2026-09-23-orders-open-in-place';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -6588,16 +6640,16 @@ async function startServer() {
         const totalTrackedOrders = userOrders.length + userCustomOrders.length;
 
         if (totalTrackedOrders === 0) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: tmsg('noOrdersMessage'),
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }], [{ text: '🎨 ثبت محصول سفارشی', callback_data: 'custom_product_start' }]] }
-            })
-          });
+          await replaceTelegramMessage(
+            token,
+            chatId,
+            cb.message?.message_id,
+            tmsg('noOrdersMessage'),
+            [
+              [{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }],
+              [{ text: '🎨 ثبت محصول سفارشی', callback_data: 'custom_product_start' }],
+            ],
+          );
           return;
         }
 
@@ -6624,60 +6676,48 @@ async function startServer() {
         }
         listKeyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
 
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `📦 <b>سفارشات شما (${summary})</b>\n\nبرای دیدن مشخصات کامل هر سفارش، روی کد آن بزنید.`,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: listKeyboard },
-          }),
-        });
+        await replaceTelegramMessage(
+          token,
+          chatId,
+          cb.message?.message_id,
+          `📦 <b>سفارشات شما (${summary})</b>\n\nبرای دیدن مشخصات کامل هر سفارش، روی کد آن بزنید.`,
+          listKeyboard,
+        );
       } else if (data.startsWith('track_custom_')) {
         const customId = data.replace('track_custom_', '');
         const customOrder = customOrders.find(
           (o) => o.id === customId && String(o.customerTelegramId) === chatId,
         );
         if (!customOrder) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: '❌ این سفارش پیدا نشد.',
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]] },
-            }),
-          });
+          await replaceTelegramMessage(
+            token,
+            chatId,
+            cb.message?.message_id,
+            '❌ این سفارش پیدا نشد.',
+            [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]],
+          );
           return;
         }
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: formatCustomOrderTrackingMessage(customOrder),
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]] },
-          }),
-        });
+        await replaceTelegramMessage(
+          token,
+          chatId,
+          cb.message?.message_id,
+          formatCustomOrderTrackingMessage(customOrder),
+          [[{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]],
+        );
       } else if (data.startsWith('track_one_')) {
         const orderId = data.replace('track_one_', '');
         const ord = orders.find(
           (o) => o.id === orderId && String(o.customerTelegramId) === chatId,
         );
         if (!ord) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: '❌ این سفارش پیدا نشد.',
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]] },
-            }),
-          });
+          await replaceTelegramMessage(
+            token,
+            chatId,
+            cb.message?.message_id,
+            '❌ این سفارش پیدا نشد.',
+            [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]],
+          );
           return;
         }
 
@@ -6730,16 +6770,7 @@ async function startServer() {
         }
         orderKeyboard.push([{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]);
 
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: orderText,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: orderKeyboard },
-          }),
-        });
+        await replaceTelegramMessage(token, chatId, cb.message?.message_id, orderText, orderKeyboard);
       } else if (data === 'admin_orders_list') {
         if (orders.length === 0) {
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

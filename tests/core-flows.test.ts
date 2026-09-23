@@ -1992,7 +1992,55 @@ function testOrdersAreListedAsCodesAndOpenedOneByOne() {
     !serverSource.includes('order_item_'),
     'The old per-product buttons must be removed, not left dangling.',
   );
-  console.log('✅ orders are listed by order code and opened one at a time');
+
+  // Tapping an order code must rewrite the message the customer is looking at,
+  // not stack another message underneath it.
+  for (const [screen, label] of [[list, 'list'], [detail, 'order detail'], [custom, 'custom order']] as const) {
+    assert.ok(
+      /replaceTelegramMessage\(/.test(screen),
+      `The ${label} screen must replace the current message instead of sending a new one.`,
+    );
+    assert.ok(
+      !/\/sendMessage`/.test(screen),
+      `The ${label} screen must not push a new message.`,
+    );
+  }
+  // Every screen must pass the tapped message's id through; passing nothing
+  // silently degrades back to posting a new message.
+  for (const [screen, label] of [[list, 'list'], [detail, 'order detail'], [custom, 'custom order']] as const) {
+    const calls = screen.split('replaceTelegramMessage(').slice(1);
+    assert.ok(calls.length > 0, `The ${label} screen must replace the current message.`);
+    // Every call, not just the first: one screen renders both the order and
+    // the "not found" fallback, and either one may regress on its own.
+    calls.forEach((call, i) => {
+      assert.ok(
+        /cb\.message\?\.message_id/.test(call.slice(0, 300)),
+        `Call ${i + 1} on the ${label} screen must pass the tapped message id, not undefined.`,
+      );
+    });
+  }
+
+  // Editing legitimately fails (message too old, or identical content); the
+  // customer must never be left staring at an unchanged screen.
+  const helper = (serverSource.split('async function replaceTelegramMessage')[1] || '')
+    .split('function orderStatusLabel')[0];
+  assert.ok(helper, 'The replace helper must exist.');
+  assert.ok(/editMessageText/.test(helper), 'The helper must try editing first.');
+  // Telegram rejects an edit whose content is identical. That means the screen
+  // is already correct, so the helper must return instead of falling through
+  // to sendMessage and duplicating what the customer already sees.
+  const guard = helper.split("description.includes('message is not modified')")[1] || '';
+  assert.ok(guard, 'The helper must recognise an unchanged screen.');
+  assert.ok(
+    /^[^}]*\breturn\b/.test(guard),
+    'An unchanged screen must stop, not be duplicated as a new message.',
+  );
+  const fallback = helper.split('message is not modified').pop() || '';
+  assert.ok(
+    /\/sendMessage`/.test(fallback),
+    'When the edit fails the helper must fall back to sending the message.',
+  );
+  console.log('✅ orders are listed by order code and open in place');
 }
 
 function testEveryMessageAndPaymentCarriesItsExactDate() {

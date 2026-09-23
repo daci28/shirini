@@ -1916,6 +1916,65 @@ function testGroupReportsNeverFailSilently() {
   console.log('✅ a failed group report is logged, stored and shown');
 }
 
+function testOrderedProductsAreBrowsedOneByOne() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+
+  const tracking = (serverSource.split("data === 'track_order'")[1] || '').split("data.startsWith('order_item_')")[0];
+  assert.ok(tracking, 'The order tracking branch must exist.');
+
+  // Every ordered product becomes its own button labelled with its code,
+  // instead of the whole order arriving as one block of text.
+  assert.ok(
+    /callback_data: `order_item_\$\{ord\.id\}_\$\{i \+ offset\}`/.test(tracking),
+    'Each ordered item needs its own button carrying its index.',
+  );
+  // The loop must actually run for every item — not be disabled behind a
+  // condition that quietly skips building the buttons.
+  assert.ok(
+    /\n\s*for \(let i = 0; i < ord\.items\.length; i \+= 2\) \{/.test(tracking),
+    'The item buttons must be built unconditionally for every order.',
+  );
+  assert.ok(
+    /text: `🧁 \$\{item\.productCode \|\| item\.productName\}`/.test(tracking),
+    'The button label must be the product code.',
+  );
+  assert.ok(
+    !/orderText \+= `\$\{idx \+ 1\}\. \$\{item\.productName\}/.test(tracking),
+    'The item list must no longer be dumped into the order text.',
+  );
+  // The receipt button must survive next to the new product buttons.
+  assert.ok(
+    /order_reupload_receipt_\$\{ord\.id\}/.test(tracking),
+    'The receipt upload button must still be offered.',
+  );
+
+  const detail = (serverSource.split("data.startsWith('order_item_')")[1] || '')
+    .split("data === 'admin_orders_list'")[0];
+  assert.ok(detail, 'The item detail branch must exist.');
+
+  // A customer must never open somebody else's order by guessing an id.
+  assert.ok(
+    /o\.id === orderId && String\(o\.customerTelegramId\) === chatId/.test(detail),
+    'An item may only be opened by the customer who owns the order.',
+  );
+  // A missing order or an out-of-range index must not throw.
+  assert.ok(/if \(!ord \|\| !item\)/.test(detail), 'A missing item must be handled.');
+
+  for (const field of ['productCode', 'quantity', 'price', 'orderNumber']) {
+    assert.ok(detail.includes(field), `The detail view must show ${field}.`);
+  }
+  assert.ok(
+    /formatIranianDateTime\(ord\.createdAt\)/.test(detail),
+    'The detail view must carry the exact order date.',
+  );
+  assert.ok(
+    /callback_data: 'track_order'/.test(detail),
+    'The detail view must offer a way back to the order list.',
+  );
+  console.log('✅ ordered products are browsed one by one from their own buttons');
+}
+
 function testEveryMessageAndPaymentCarriesItsExactDate() {
   const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
   const typesSource = read('../src/types.ts');
@@ -2367,6 +2426,7 @@ async function main() {
   testJustUploadedPicturePreviewsImmediately();
   testSingleCustomerMessageIsNotReportedAsABroadcast();
   testEveryMessageAndPaymentCarriesItsExactDate();
+  testOrderedProductsAreBrowsedOneByOne();
   testGroupReportsNeverFailSilently();
   testAMessageToCustomersIsSignedByTheShop();
   testDeployBuildsTheAppExactlyOnce();

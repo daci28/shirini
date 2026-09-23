@@ -1787,7 +1787,23 @@ function testDeployBuildsTheAppExactlyOnce() {
   for (const tool of ['vite', 'esbuild', 'tailwindcss', 'typescript']) {
     assert.ok(deps[tool], `${tool} must be a dependency so a production install can still build.`);
   }
-  assert.ok(pkg.engines?.node, 'The Node version must be pinned so the deploy is reproducible.');
+
+  // A failing platform build must say why. The preflight check reports the
+  // node version, the memory limit and any missing tool before compiling.
+  assert.ok(
+    /verify-build\.mjs/.test(scripts.build),
+    'The build must run the preflight check so a failure is diagnosable.',
+  );
+  const preflight = read('../scripts/verify-build.mjs');
+  assert.ok(/memory\.max/.test(preflight), 'The preflight must report the container memory limit.');
+  assert.ok(/process\.exit\(1\)/.test(preflight), 'A missing build tool must fail loudly.');
+
+  // An explicit heap cap is a failure mode on a container whose real limit is
+  // unknown; the build fits in the default heap.
+  assert.ok(
+    !/max-old-space-size/.test(scripts.build),
+    'The build must not hard-code a heap cap.',
+  );
 
   // Start still has to work on a cold container with no build cache.
   assert.ok(

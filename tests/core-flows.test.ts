@@ -1932,63 +1932,67 @@ function testGroupReportsNeverFailSilently() {
   console.log('✅ a failed group report is logged, stored and shown');
 }
 
-function testOrderedProductsAreBrowsedOneByOne() {
+function testOrdersAreListedAsCodesAndOpenedOneByOne() {
   const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
   const serverSource = read('../server.ts');
 
-  const tracking = (serverSource.split("data === 'track_order'")[1] || '').split("data.startsWith('order_item_')")[0];
-  assert.ok(tracking, 'The order tracking branch must exist.');
+  const list = (serverSource.split("data === 'track_order'")[1] || '')
+    .split("data.startsWith('track_custom_')")[0];
+  assert.ok(list, 'The order list branch must exist.');
 
-  // Every ordered product becomes its own button labelled with its code,
-  // instead of the whole order arriving as one block of text.
+  // The list is only a list: one button per order labelled with the ORDER
+  // code (not a product code), and no order details spilled into the text.
   assert.ok(
-    /callback_data: `order_item_\$\{ord\.id\}_\$\{i \+ offset\}`/.test(tracking),
-    'Each ordered item needs its own button carrying its index.',
-  );
-  // The loop must actually run for every item — not be disabled behind a
-  // condition that quietly skips building the buttons.
-  assert.ok(
-    /\n\s*for \(let i = 0; i < ord\.items\.length; i \+= 2\) \{/.test(tracking),
-    'The item buttons must be built unconditionally for every order.',
+    /text: `🧾 \$\{ord\.orderNumber\}`/.test(list),
+    'Each order button must be labelled with the order number.',
   );
   assert.ok(
-    /text: `🧁 \$\{item\.productCode \|\| item\.productName\}`/.test(tracking),
-    'The button label must be the product code.',
+    /callback_data: `track_one_\$\{ord\.id\}`/.test(list),
+    'Each order button must open that single order.',
   );
+  for (const leaked of ['نحوه دریافت', 'مبلغ نهایی', 'item.productCode']) {
+    assert.ok(!list.includes(leaked), `The list must not show "${leaked}"; it belongs in the detail view.`);
+  }
+  // Custom orders belong in the same list, under their own code.
   assert.ok(
-    !/orderText \+= `\$\{idx \+ 1\}\. \$\{item\.productName\}/.test(tracking),
-    'The item list must no longer be dumped into the order text.',
-  );
-  // The receipt button must survive next to the new product buttons.
-  assert.ok(
-    /order_reupload_receipt_\$\{ord\.id\}/.test(tracking),
-    'The receipt upload button must still be offered.',
+    /callback_data: `track_custom_\$\{customOrder\.id\}`/.test(list),
+    'Custom orders must be listed as buttons too.',
   );
 
-  const detail = (serverSource.split("data.startsWith('order_item_')")[1] || '')
+  const detail = (serverSource.split("data.startsWith('track_one_')")[1] || '')
     .split("data === 'admin_orders_list'")[0];
-  assert.ok(detail, 'The item detail branch must exist.');
+  assert.ok(detail, 'The single-order branch must exist.');
 
+  // Opening one order must give back the complete description it used to show.
+  for (const field of ['کد سفارش', 'اقلام', 'نحوه دریافت', 'نحوه پرداخت', 'مبلغ نهایی']) {
+    assert.ok(detail.includes(field), `The detail view must still show "${field}".`);
+  }
+  assert.ok(
+    /item\.productCode/.test(detail) && /item\.quantity/.test(detail),
+    'The detail view must list each item with its code and quantity.',
+  );
+  assert.ok(
+    /order_reupload_receipt_\$\{ord\.id\}/.test(detail),
+    'The receipt upload button must survive in the detail view.',
+  );
   // A customer must never open somebody else's order by guessing an id.
   assert.ok(
     /o\.id === orderId && String\(o\.customerTelegramId\) === chatId/.test(detail),
-    'An item may only be opened by the customer who owns the order.',
+    'An order may only be opened by the customer who owns it.',
   );
-  // A missing order or an out-of-range index must not throw.
-  assert.ok(/if \(!ord \|\| !item\)/.test(detail), 'A missing item must be handled.');
+  const custom = (serverSource.split("data.startsWith('track_custom_')")[1] || '')
+    .split("data.startsWith('track_one_')")[0];
+  assert.ok(
+    /o\.id === customId && String\(o\.customerTelegramId\) === chatId/.test(custom),
+    'A custom order may only be opened by its owner.',
+  );
 
-  for (const field of ['productCode', 'quantity', 'price', 'orderNumber']) {
-    assert.ok(detail.includes(field), `The detail view must show ${field}.`);
-  }
+  // The per-product drill-down was replaced by this; it must be gone.
   assert.ok(
-    /formatIranianDateTime\(ord\.createdAt\)/.test(detail),
-    'The detail view must carry the exact order date.',
+    !serverSource.includes('order_item_'),
+    'The old per-product buttons must be removed, not left dangling.',
   );
-  assert.ok(
-    /callback_data: 'track_order'/.test(detail),
-    'The detail view must offer a way back to the order list.',
-  );
-  console.log('✅ ordered products are browsed one by one from their own buttons');
+  console.log('✅ orders are listed by order code and opened one at a time');
 }
 
 function testEveryMessageAndPaymentCarriesItsExactDate() {
@@ -2442,7 +2446,7 @@ async function main() {
   testJustUploadedPicturePreviewsImmediately();
   testSingleCustomerMessageIsNotReportedAsABroadcast();
   testEveryMessageAndPaymentCarriesItsExactDate();
-  testOrderedProductsAreBrowsedOneByOne();
+  testOrdersAreListedAsCodesAndOpenedOneByOne();
   testGroupReportsNeverFailSilently();
   testAMessageToCustomersIsSignedByTheShop();
   testDeployBuildsTheAppExactlyOnce();

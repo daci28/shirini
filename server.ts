@@ -746,7 +746,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-23-order-items-as-buttons';
+const APP_REVISION = '2026-09-23-orders-listed-by-code';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -6601,118 +6601,79 @@ async function startServer() {
           return;
         }
 
+        // The list is only a list: one glass button per order labelled with
+        // its order code. All the details live behind that button, so the
+        // customer is not handed every order as a wall of text.
         const summary = [
           userOrders.length ? `${userOrders.length} سفارش عادی` : '',
           userCustomOrders.length ? `${userCustomOrders.length} سفارش سفارشی` : '',
         ].filter(Boolean).join(' و ');
+
+        const listKeyboard: any[][] = [];
+        for (const ord of userOrders) {
+          listKeyboard.push([{
+            text: `🧾 ${ord.orderNumber}`,
+            callback_data: `track_one_${ord.id}`,
+          }]);
+        }
+        for (const customOrder of userCustomOrders) {
+          listKeyboard.push([{
+            text: `🎂 ${customOrder.orderNumber}`,
+            callback_data: `track_custom_${customOrder.id}`,
+          }]);
+        }
+        listKeyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
+
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `📦 <b>سفارشات شما (${summary}):</b>`,
-            parse_mode: 'HTML'
-          })
+            text: `📦 <b>سفارشات شما (${summary})</b>\n\nبرای دیدن مشخصات کامل هر سفارش، روی کد آن بزنید.`,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: listKeyboard },
+          }),
         });
-
-        for (const ord of userOrders) {
-          let orderText = `🔖 <b>کد سفارش:</b> <code>${ord.orderNumber}</code>\n`;
-          orderText += `📊 وضعیت: <b>${orderStatusLabel(ord.status)}</b>\n\n`;
-          orderText += `📦 <b>اقلام:</b> ${ord.items.length} قلم — برای دیدن جزئیات هر کالا، کد آن را در دکمه‌های زیر بزنید.\n`;
-          orderText += `─────────────────\n`;
-          orderText += `📦 نحوه دریافت: <b>${ord.deliveryMethod === 'pickup' ? '🏪 حضوری' : '🛵 پیک'}</b>\n`;
-          orderText += `💳 نحوه پرداخت: <b>${ord.paymentMethod === 'cash_on_delivery' ? '💵 در محل' : '💳 آنلاین'}</b>\n`;
-          orderText += `💵 مجموع: <b>${ord.subtotal.toLocaleString()}</b>\n`;
-          orderText += `🚚 ارسال: <b>${ord.shippingFee === 0 ? 'رایگان' : ord.shippingFee.toLocaleString()}</b>\n`;
-          if (ord.discountAmount > 0) {
-            orderText += `🎟️ تخفیف: <b>-${ord.discountAmount.toLocaleString()}</b>\n`;
-          }
-          orderText += `─────────────────\n`;
-          orderText += `💎 <b>مبلغ نهایی: ${ord.totalAmount.toLocaleString()} تومان</b>\n`;
-
-          const receiptAlreadyConfirmed = ord.receiptReviewStatus === 'confirmed'
-            || ['receipt_confirmed', 'baking', 'shipped', 'delivered'].includes(ord.status);
-          // A receipt is "under review" only once an image actually exists; a
-          // fresh card-transfer order (paid_checking, photo not sent yet) must
-          // still offer the upload button instead of claiming it was received.
-          const receiptUnderReview = Boolean(ord.paymentReceiptImage)
-            && !['confirmed', 'rejected'].includes(ord.receiptReviewStatus || '');
-          const canSendReceipt = ord.paymentMethod !== 'cash_on_delivery'
-            && !['cancelled', 'shipped', 'delivered'].includes(ord.status)
-            && !receiptAlreadyConfirmed
-            && !receiptUnderReview;
-
-          const orderKeyboard: any[][] = [];
-          // Each ordered product gets its own button labelled with its product
-          // code, so the customer opens one item at a time instead of reading
-          // the whole order as a wall of text.
-          for (let i = 0; i < ord.items.length; i += 2) {
-            orderKeyboard.push(
-              ord.items.slice(i, i + 2).map((item, offset) => ({
-                text: `🧁 ${item.productCode || item.productName}`,
-                callback_data: `order_item_${ord.id}_${i + offset}`,
-              })),
-            );
-          }
-          if (canSendReceipt) {
-            orderKeyboard.push([{
-              text: ord.receiptReviewStatus === 'rejected' ? '📷 ارسال فیش جدید' : (ord.paymentReceiptImage ? '📷 ارسال مجدد فیش' : '📷 ارسال فیش واریزی'),
-              callback_data: `order_reupload_receipt_${ord.id}`,
-            }]);
-            if (ord.receiptReviewStatus === 'rejected') {
-              orderText += `\n❌ <b>فیش قبلی تأیید نشد.</b>${ord.receiptReviewReason ? ` دلیل: ${escapeTelegramHtml(ord.receiptReviewReason)}` : ''}\nلطفاً فیش صحیح را با دکمه زیر ارسال کنید.`;
-            } else if (!ord.paymentReceiptImage) {
-              orderText += `\n📷 برای ثبت پرداخت، مبلغ را کارت‌به‌کارت واریز کرده و با دکمه «ارسال فیش واریزی» تصویر آن را بفرستید.`;
-            }
-          } else if (receiptUnderReview) {
-            orderText += `\n⏳ <b>فیش واریزی شما دریافت شده و در انتظار تأیید ادمین است.</b>`;
-          }
-          orderKeyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
-
+      } else if (data.startsWith('track_custom_')) {
+        const customId = data.replace('track_custom_', '');
+        const customOrder = customOrders.find(
+          (o) => o.id === customId && String(o.customerTelegramId) === chatId,
+        );
+        if (!customOrder) {
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: orderText,
+              text: '❌ این سفارش پیدا نشد.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: orderKeyboard }
-            })
+              reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]] },
+            }),
           });
+          return;
         }
-
-        for (const customOrder of userCustomOrders) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: formatCustomOrderTrackingMessage(customOrder),
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]] }
-            })
-          });
-        }
-      } else if (data.startsWith('order_item_')) {
-        // "order_item_<orderId>_<index>" — the order id itself contains no
-        // underscore-free guarantee, so the index is split off from the end.
-        const rest = data.replace('order_item_', '');
-        const splitAt = rest.lastIndexOf('_');
-        const orderId = splitAt === -1 ? rest : rest.slice(0, splitAt);
-        const itemIndex = splitAt === -1 ? -1 : Number(rest.slice(splitAt + 1));
-
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: formatCustomOrderTrackingMessage(customOrder),
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]] },
+          }),
+        });
+      } else if (data.startsWith('track_one_')) {
+        const orderId = data.replace('track_one_', '');
         const ord = orders.find(
           (o) => o.id === orderId && String(o.customerTelegramId) === chatId,
         );
-        const item = ord && Number.isInteger(itemIndex) ? ord.items[itemIndex] : undefined;
-
-        if (!ord || !item) {
+        if (!ord) {
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: '❌ این کالا پیدا نشد. ممکن است سفارش تغییر کرده باشد.',
+              text: '❌ این سفارش پیدا نشد.',
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]] },
             }),
@@ -6720,61 +6681,63 @@ async function startServer() {
           return;
         }
 
-        const lineTotal = item.price * item.quantity;
-        let detail = `🧁 <b>${escapeTelegramHtml(item.productName)}</b>\n`;
-        detail += `─────────────────\n`;
-        detail += `🔖 <b>کد محصول:</b> <code>${escapeTelegramHtml(item.productCode || '---')}</code>\n`;
-        detail += `🔢 <b>تعداد:</b> ${item.quantity} ${escapeTelegramHtml(item.unit || '')}\n`;
-        detail += `💵 <b>قیمت واحد:</b> ${item.price.toLocaleString()} تومان\n`;
-        detail += `💰 <b>جمع این قلم:</b> <b>${lineTotal.toLocaleString()} تومان</b>\n`;
-        detail += `─────────────────\n`;
-        detail += `📦 <b>سفارش:</b> <code>${escapeTelegramHtml(ord.orderNumber)}</code>\n`;
-        detail += `📊 <b>وضعیت سفارش:</b> ${escapeTelegramHtml(orderStatusLabel(ord.status))}\n`;
-        detail += `🕑 ${formatIranianDateTime(ord.createdAt)}`;
-
-        // Return to the same order, plus the order's other items so the
-        // customer can step through them without going back to the list.
-        const siblings: any[][] = [];
-        for (let i = 0; i < ord.items.length; i += 2) {
-          const row = ord.items
-            .slice(i, i + 2)
-            .map((other, offset) => ({ other, index: i + offset }))
-            .filter(({ index }) => index !== itemIndex)
-            .map(({ other, index }) => ({
-              text: `🧁 ${other.productCode || other.productName}`,
-              callback_data: `order_item_${ord.id}_${index}`,
-            }));
-          if (row.length) siblings.push(row);
+        // The full detail, exactly as it used to be shown for every order.
+        let orderText = `🔖 <b>کد سفارش:</b> <code>${ord.orderNumber}</code>\n`;
+        orderText += `📊 وضعیت: <b>${orderStatusLabel(ord.status)}</b>\n`;
+        orderText += `🕑 ثبت: ${formatIranianDateTime(ord.createdAt)}\n\n`;
+        orderText += `📦 <b>اقلام:</b>\n`;
+        ord.items.forEach((item, idx) => {
+          orderText += `${idx + 1}. ${escapeTelegramHtml(item.productName)}\n`;
+          orderText += `   کد: <code>${escapeTelegramHtml(item.productCode || '---')}</code>\n`;
+          orderText += `   ${item.quantity} ${escapeTelegramHtml(item.unit || '')} × ${item.price.toLocaleString()} = <b>${(item.price * item.quantity).toLocaleString()}</b>\n\n`;
+        });
+        orderText += `─────────────────\n`;
+        orderText += `📦 نحوه دریافت: <b>${ord.deliveryMethod === 'pickup' ? '🏪 حضوری' : '🛵 پیک'}</b>\n`;
+        orderText += `💳 نحوه پرداخت: <b>${ord.paymentMethod === 'cash_on_delivery' ? '💵 در محل' : '💳 آنلاین'}</b>\n`;
+        orderText += `💵 مجموع: <b>${ord.subtotal.toLocaleString()}</b>\n`;
+        orderText += `🚚 ارسال: <b>${ord.shippingFee === 0 ? 'رایگان' : ord.shippingFee.toLocaleString()}</b>\n`;
+        if (ord.discountAmount > 0) {
+          orderText += `🎟️ تخفیف: <b>-${ord.discountAmount.toLocaleString()}</b>\n`;
         }
-        siblings.push([{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]);
+        orderText += `─────────────────\n`;
+        orderText += `💎 <b>مبلغ نهایی: ${ord.totalAmount.toLocaleString()} تومان</b>\n`;
 
-        const itemPhoto = item.productImage ? toPubliclyFetchableUrl(item.productImage) : null;
-        if (itemPhoto) {
-          const photoRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              photo: itemPhoto,
-              caption: detail,
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: siblings },
-            }),
-          });
-          const photoData = (await photoRes.json().catch(() => ({}))) as any;
-          if (photoData?.ok) return;
-          // Telegram refused the picture (unreachable host, bad format); the
-          // details still have to arrive, so fall through to a text message.
+        const receiptAlreadyConfirmed = ord.receiptReviewStatus === 'confirmed'
+          || ['receipt_confirmed', 'baking', 'shipped', 'delivered'].includes(ord.status);
+        // A receipt is "under review" only once an image actually exists; a
+        // fresh card-transfer order (paid_checking, photo not sent yet) must
+        // still offer the upload button instead of claiming it was received.
+        const receiptUnderReview = Boolean(ord.paymentReceiptImage)
+          && !['confirmed', 'rejected'].includes(ord.receiptReviewStatus || '');
+        const canSendReceipt = ord.paymentMethod !== 'cash_on_delivery'
+          && !['cancelled', 'shipped', 'delivered'].includes(ord.status)
+          && !receiptAlreadyConfirmed
+          && !receiptUnderReview;
+
+        const orderKeyboard: any[][] = [];
+        if (canSendReceipt) {
+          orderKeyboard.push([{
+            text: ord.receiptReviewStatus === 'rejected' ? '📷 ارسال فیش جدید' : (ord.paymentReceiptImage ? '📷 ارسال مجدد فیش' : '📷 ارسال فیش واریزی'),
+            callback_data: `order_reupload_receipt_${ord.id}`,
+          }]);
+          if (ord.receiptReviewStatus === 'rejected') {
+            orderText += `\n❌ <b>فیش قبلی تأیید نشد.</b>${ord.receiptReviewReason ? ` دلیل: ${escapeTelegramHtml(ord.receiptReviewReason)}` : ''}\nلطفاً فیش صحیح را با دکمه زیر ارسال کنید.`;
+          } else if (!ord.paymentReceiptImage) {
+            orderText += `\n📷 برای ثبت پرداخت، مبلغ را کارت‌به‌کارت واریز کرده و با دکمه «ارسال فیش واریزی» تصویر آن را بفرستید.`;
+          }
+        } else if (receiptUnderReview) {
+          orderText += `\n⏳ <b>فیش واریزی شما دریافت شده و در انتظار تأیید ادمین است.</b>`;
         }
+        orderKeyboard.push([{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]);
 
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: detail,
+            text: orderText,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: siblings },
+            reply_markup: { inline_keyboard: orderKeyboard },
           }),
         });
       } else if (data === 'admin_orders_list') {

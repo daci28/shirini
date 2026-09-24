@@ -2523,44 +2523,43 @@ function testScheduledBackupsReachTheAdminsInTelegram() {
     'The panel must tell the admin to start the bot first.',
   );
 
-  // "after every new order" is an event, not a clock. It used to sit in the
-  // interval table as one hour, so the setting silently behaved like an
-  // hourly backup and no order ever triggered one.
+  // "after every new order" was removed: it sat in the interval table as one
+  // hour, so it silently behaved like an hourly backup and no order ever
+  // triggered one. Nothing may reintroduce it without wiring a real trigger.
+  for (const [src, label] of [[serverSource, 'server'], [typesSource, 'types'], [panelSource, 'panel']] as const) {
+    assert.ok(!src.includes('every_order'), `every_order must be gone from the ${label}.`);
+  }
+
+  // Anyone whose saved schedule still holds the removed value must be moved to
+  // a frequency the daemon can actually run, or the panel shows an empty
+  // dropdown and the interval lookup quietly falls back to daily.
   assert.ok(
-    !/every_order:\s*\d/.test(intervals),
-    'every_order must not be driven by the interval table.',
+    /BACKUP_FREQUENCIES\.includes\(backupSchedule\.frequency\)/.test(serverSource),
+    'An unknown stored frequency must be migrated on load.',
   );
+  // The migration reads the constant, so it must be declared before that point.
   assert.ok(
-    /function backupAfterOrderIfNeeded/.test(serverSource),
-    'There must be a routine that backs up when an order arrives.',
+    serverSource.indexOf('const BACKUP_FREQUENCIES') < serverSource.indexOf('BACKUP_FREQUENCIES.includes(backupSchedule.frequency)'),
+    'BACKUP_FREQUENCIES must be declared before the migration uses it.',
   );
-  const afterOrder = (serverSource.split('function backupAfterOrderIfNeeded')[1] || '')
-    .split('function runScheduledBackupCheck')[0];
+  // Every frequency offered in the panel must be one the scheduler knows.
+  const offered = [...panelSource.matchAll(/<option value="([a-z_0-9]+)"/g)].map((m) => m[1]);
+  const scheduled = offered.filter((v) => !/^\d+$/.test(v));
+  for (const freq of scheduled) {
+    assert.ok(
+      new RegExp(`'${freq}'`).test(serverSource.split('const BACKUP_FREQUENCIES')[1].split('];')[0])
+        || freq === 'custom_hours',
+      `The panel offers "${freq}" but the scheduler does not list it.`,
+    );
+    assert.ok(
+      freq === 'custom_hours' || intervals.includes(freq),
+      `The panel offers "${freq}" but there is no interval for it.`,
+    );
+  }
+  // A frequency the daemon cannot run must be refused, not stored.
   assert.ok(
-    /frequency !== 'every_order'/.test(afterOrder),
-    'An order must only trigger a backup in the every_order mode.',
-  );
-  assert.ok(
-    /backupSchedule\.enabled/.test(afterOrder),
-    'A disabled schedule must not back up on an order.',
-  );
-  // Counting guards against firing twice for one order and against missing an
-  // order placed through a path that forgot to call the hook.
-  assert.ok(
-    /orders\.length \+ customOrders\.length/.test(afterOrder)
-      && /total <= lastSeenOrderCount/.test(afterOrder),
-    'New orders must be detected by count so the backup cannot double-fire.',
-  );
-  assert.ok(
-    /lastSeenOrderCount = orders\.length \+ customOrders\.length;/.test(serverSource),
-    'The order counter must be seeded at startup, or the first check backs up spuriously.',
-  );
-  // Every creation path must reach the hook: HTTP order, HTTP custom order,
-  // bot custom order, and both bot checkout handlers.
-  const hookCalls = (serverSource.match(/backupAfterOrderIfNeeded\(\);/g) || []).length;
-  assert.ok(
-    hookCalls >= 6,
-    `Every order creation path must notify the backup hook (found ${hookCalls}).`,
+    /BACKUP_FREQUENCIES\.includes\(incoming\.frequency\)/.test(serverSource),
+    'Saving an unsupported frequency must be rejected.',
   );
 
   // A stored schedule written by an older build holds only a couple of keys.

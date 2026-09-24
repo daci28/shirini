@@ -320,7 +320,6 @@ export interface BackupScheduleConfig {
     | 'every_12_hours'
     | 'daily'
     | 'weekly'
-    | 'every_order'
     | 'custom_hours';
   /** Interval in hours when frequency is 'custom_hours'. */
   customIntervalHours?: number;

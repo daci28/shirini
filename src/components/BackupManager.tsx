@@ -797,7 +797,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                 <option value="weekly">هفتگی در روزهای انتخابی</option>
                 <option value="hourly">ساعتی (برای روزهای شلوغ و جشن‌ها)</option>
                 <option value="custom_hours">دوره دلخواه (هر چند ساعت یکبار)</option>
-                <option value="every_order">بلافاصله پس از ثبت هر سفارش جدید</option>
               </select>
               {scheduleState.frequency === 'custom_hours' && (
                 <div className="pt-2 space-y-1">

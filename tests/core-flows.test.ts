@@ -2365,6 +2365,77 @@ function testUploadsReportTheirProgress() {
   console.log('✅ every picture upload in the panel shows a real percentage');
 }
 
+function testAdminCanDownloadTheBackupFileFromTheBot() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+  const handlersSource = read('../src/telegramHandlers.ts');
+
+  // The backup menu must offer the file itself, not only a pointer to the
+  // web panel.
+  assert.ok(
+    /callback_data: 'admin_backup_download'/.test(handlersSource),
+    'The backup menu must offer a button that sends the backup file.',
+  );
+
+  // The literal appears twice on adjacent lines, so slice from the first
+  // occurrence rather than splitting (which would land past the branch body).
+  const branchStart = serverSource.indexOf("data === 'admin_backup_download'");
+  const branch = branchStart === -1
+    ? ''
+    : serverSource.slice(branchStart).split("if (data.startsWith('admin_'))")[0];
+  assert.ok(branch, 'The bot must handle the backup download.');
+
+  // The file has to actually be uploaded as a document built from the real
+  // snapshot payload, not described in a message.
+  // Match the actual API call, not the word in a log line.
+  assert.ok(
+    /api\.telegram\.org\/bot\$\{token\}\/sendDocument/.test(branch),
+    'The backup must be uploaded through sendDocument.',
+  );
+  assert.ok(
+    /createSnapshotInternal\(/.test(branch),
+    'The file must come from the real snapshot payload, not a hand-rolled object.',
+  );
+  assert.ok(
+    /new Blob\(\[serialized\]/.test(branch) && /application\/json/.test(branch),
+    'The document must carry the serialized JSON.',
+  );
+  assert.ok(/\.json/.test(branch), 'The document must be named as a .json file.');
+
+  // A backup travels outside the server, so it must never carry the panel
+  // password or the bot token. generateBackupPayload is the only builder.
+  const payloadBuilder = (serverSource.split('function generateBackupPayload')[1] || '')
+    .split('function createSnapshotInternal')[0];
+  assert.ok(
+    /omitPanelPassword\(botSettings\)/.test(payloadBuilder),
+    'The backup must strip the panel password and bot token from settings.',
+  );
+
+  // Telegram caps documents at 50MB; the admin must be told, not left with a
+  // silent failure.
+  assert.ok(
+    /50 \* 1024 \* 1024/.test(branch),
+    'An oversized backup must be reported instead of failing silently.',
+  );
+
+  // A failed upload must not be reported as success.
+  assert.ok(
+    /body\?\.ok/.test(branch) && /فایل بکاپ ارسال نشد/.test(branch),
+    'A failed upload must be reported honestly.',
+  );
+
+  // The old button claimed a snapshot was created without creating one.
+  assert.ok(
+    !/نسخه پشتیبان فوری دیتابیس با موفقیت ایجاد شد/.test(handlersSource),
+    'The snapshot button must not claim success without doing the work.',
+  );
+  assert.ok(
+    /data === 'admin_create_instant_snapshot'/.test(serverSource),
+    'The snapshot button must be handled where snapshots can really be taken.',
+  );
+  console.log('✅ the admin can pull the backup file straight from the bot');
+}
+
 function testShopNameComesFromSettingsEverywhere() {
   const files: Array<[string, string]> = [
     ['server.ts', fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8')],
@@ -2499,6 +2570,7 @@ async function main() {
   testAMessageToCustomersIsSignedByTheShop();
   testDeployBuildsTheAppExactlyOnce();
   testUploadsReportTheirProgress();
+  testAdminCanDownloadTheBackupFileFromTheBot();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();

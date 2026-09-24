@@ -798,7 +798,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-23-orders-open-in-place';
+const APP_REVISION = '2026-09-24-backup-file-from-bot';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -5828,6 +5828,120 @@ async function startServer() {
         }
       }
       
+      // Backup actions live here rather than in the handlers module because
+      // the snapshot machinery (and the real on-disk data) is only in scope in
+      // this file. Both are already behind the isTelegramAdmin check above.
+      if (data === 'admin_backup_download' || data === 'admin_create_instant_snapshot') {
+        const wantsFile = data === 'admin_backup_download';
+        const backupMenu = [
+          [{ text: '💾 منوی بکاپ', callback_data: 'admin_backup' }],
+          [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
+        ];
+
+        try {
+          // Taking a snapshot also writes it to the backups folder on disk, so
+          // asking for the file leaves a restore point behind as a side effect.
+          const snapshot = createSnapshotInternal('manual');
+          saveAllData();
+
+          if (!wantsFile) {
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text: `✅ <b>نسخهٔ پشتیبان ساخته شد.</b>\n\n`
+                  + `🗂 نام فایل: <code>${escapeTelegramHtml(snapshot.filename)}</code>\n`
+                  + `⏰ زمان: <b>${formatIranianDateTime(snapshot.timestamp)}</b>\n`
+                  + `📦 حجم: <b>${(snapshot.sizeBytes / 1024).toFixed(1)} کیلوبایت</b>\n\n`
+                  + `این نسخه روی سرور ذخیره شد. برای دریافت خود فایل، دکمهٔ «دریافت فایل بکاپ» را بزنید.`,
+                reply_markup: { inline_keyboard: backupMenu },
+              }),
+            });
+            return;
+          }
+
+          const serialized = JSON.stringify(snapshot.payload, null, 2);
+          const bytes = Buffer.byteLength(serialized, 'utf8');
+          // Telegram refuses documents larger than 50MB; say so plainly
+          // instead of letting the upload fail with no explanation.
+          const TELEGRAM_DOCUMENT_LIMIT = 50 * 1024 * 1024;
+          if (bytes > TELEGRAM_DOCUMENT_LIMIT) {
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                parse_mode: 'HTML',
+                text: `⚠️ <b>حجم بکاپ از حد مجاز تلگرام بیشتر است.</b>\n\n`
+                  + `📦 حجم: <b>${(bytes / 1048576).toFixed(1)} مگابایت</b> (حداکثر ۵۰ مگابایت)\n\n`
+                  + `نسخهٔ پشتیبان روی سرور ساخته شد؛ برای دانلود آن از پنل تحت وب استفاده کنید.`,
+                reply_markup: { inline_keyboard: backupMenu },
+              }),
+            });
+            return;
+          }
+
+          const form = new FormData();
+          form.append('chat_id', chatId);
+          form.append('parse_mode', 'HTML');
+          form.append(
+            'caption',
+            `💾 <b>نسخهٔ پشتیبان ${escapeTelegramHtml(storeName())}</b>\n\n`
+              + `⏰ زمان: <b>${formatIranianDateTime(snapshot.timestamp)}</b>\n`
+              + `📦 حجم: <b>${(bytes / 1024).toFixed(1)} کیلوبایت</b>\n`
+              + `🧁 محصولات: <b>${snapshot.stats.productsCount}</b>\n`
+              + `📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>\n`
+              + `🎂 سفارشی: <b>${snapshot.stats.customOrdersCount}</b>\n`
+              + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n\n`
+              + `🔐 این فایل شامل رمز پنل و توکن بات نیست.`,
+          );
+          form.append('reply_markup', JSON.stringify({ inline_keyboard: backupMenu }));
+          form.append(
+            'document',
+            new Blob([serialized], { type: 'application/json' }),
+            snapshot.filename,
+          );
+
+          const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+            method: 'POST',
+            body: form,
+          });
+          const body: any = await res.json().catch(() => null);
+          if (body?.ok) return;
+
+          // The snapshot exists on the server even when the upload fails, so
+          // report the real reason rather than a bare "done".
+          console.error('[backup] sendDocument failed:', body?.description || 'unknown');
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: `⚠️ <b>فایل بکاپ ارسال نشد.</b>\n\n`
+                + `دلیل: <code>${escapeTelegramHtml(String(body?.description || 'نامشخص'))}</code>\n\n`
+                + `نسخهٔ پشتیبان روی سرور با نام <code>${escapeTelegramHtml(snapshot.filename)}</code> ساخته شد و از پنل وب قابل دانلود است.`,
+              reply_markup: { inline_keyboard: backupMenu },
+            }),
+          });
+        } catch (err) {
+          console.error('[backup] telegram backup failed:', err);
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: '⚠️ <b>ساخت نسخهٔ پشتیبان ناموفق بود.</b>\n\nلطفاً دوباره تلاش کنید یا از پنل تحت وب بکاپ بگیرید.',
+              reply_markup: { inline_keyboard: backupMenu },
+            }),
+          });
+        }
+        return;
+      }
+
       // Try admin callbacks
       if (data.startsWith('admin_')) {
         const handled = await handleAdminCallback(tgCtx, data);

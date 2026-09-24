@@ -1281,18 +1281,10 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     text += `دیتابیس سیستم به صورت فایل‌های JSON مستقل روی دیسک سرور با امنیت کامل ذخیره و هر ۱۰ ثانیه همگام‌سازی می‌شود.`;
 
     await tgSend(ctx, text, [
+      [{ text: '📥 دریافت فایل بکاپ', callback_data: 'admin_backup_download' }],
       [{ text: '⚡ ایجاد نسخه پشتیبان فوری (اسنپ‌شات)', callback_data: 'admin_create_instant_snapshot' }],
       [{ text: '🌐 مشخصات ورود به پنل وب', callback_data: 'admin_web_info' }],
       [{ text: '👨‍🍳 بازگشت به منوی ادمین', callback_data: 'admin_panel' }]
-    ]);
-    return true;
-  }
-
-  if (data === 'admin_create_instant_snapshot') {
-    const timeStr = new Date().toLocaleTimeString('fa-IR');
-    await tgSend(ctx, `✅ <b>نسخه پشتیبان فوری دیتابیس با موفقیت ایجاد شد!</b>\n\n⏰ زمان بکاپ: <b>${timeStr}</b>\n📁 فایل‌های data.json و settings.json روی سرور به‌روز شدند.`, [
-      [{ text: '💾 منوی بکاپ', callback_data: 'admin_backup' }],
-      [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]
     ]);
     return true;
   }
@@ -1765,15 +1757,6 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   if (data === 'admin_edit_help') {
     ctx.userStates.set(ctx.chatId, { mode: 'edit_help' });
     await tgSend(ctx, '✏️ پیام راهنما جدید را ارسال کنید:', [[{ text: '❌ انصراف', callback_data: 'admin_texts' }]]);
-    return true;
-  }
-
-  // Backup
-  if (data === 'admin_backup') {
-    await tgSend(ctx, '💾 <b>بکاپ و بازیابی:</b>\n\nبرای دانلود بکاپ کامل به پنل تحت وب مراجعه کنید.', [
-      [{ text: '🌐 ورود به پنل وب', callback_data: 'admin_web_info' }],
-      [{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]
-    ]);
     return true;
   }
 

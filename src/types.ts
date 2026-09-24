@@ -160,6 +160,17 @@ export interface BotSettings {
   /** Server-provided status flag; it never contains or reveals the token itself. */
   hasTelegramBotToken?: boolean;
   isLiveBotActive: boolean;
+  /**
+   * Remove a card/online order that never received a payment receipt.
+   *
+   * Only reaches orders still sitting at the payment step: a cash-on-delivery
+   * order has nothing to pay up front, and an order whose receipt already
+   * arrived is waiting on the shop, not the customer. Off by default, because
+   * the removal cannot be undone.
+   */
+  unpaidOrderExpiryEnabled?: boolean;
+  /** Minutes to wait after the order is placed before removing it. */
+  unpaidOrderExpiryMinutes?: number;
   forumGroupId?: string;
   forumGroupTitle?: string;
   forumAutoCreateTopics?: boolean;

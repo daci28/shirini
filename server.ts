@@ -846,7 +846,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-carts-and-states';
+const APP_REVISION = '2026-09-24-expire-unpaid-orders';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -4282,6 +4282,83 @@ async function startServer() {
     return record();
   }
 
+  /** Default wait before an unpaid order is removed, when none is configured. */
+  const DEFAULT_UNPAID_EXPIRY_MINUTES = 30;
+
+  /**
+   * An order is waiting on the customer only while it sits at the payment step
+   * with no receipt. Anything else — cash on delivery, a receipt already sent,
+   * or a status the shop has moved on — is not theirs to lose.
+   */
+  function isAwaitingCustomerPayment(order: Order): boolean {
+    if (order.paymentMethod === 'cash_on_delivery') return false;
+    if (order.status !== 'paid_checking') return false;
+    if (order.paymentReceiptImage) return false;
+    if (order.receiptReviewStatus === 'confirmed') return false;
+    return true;
+  }
+
+  /**
+   * Remove orders whose customer never paid.
+   *
+   * The invoice needs no separate handling: order invoices are derived from
+   * the order itself rather than stored, so it disappears with it.
+   */
+  async function expireUnpaidOrders(): Promise<void> {
+    if (!botSettings.unpaidOrderExpiryEnabled) return;
+
+    const configured = Number(botSettings.unpaidOrderExpiryMinutes);
+    // A zero or negative wait would delete orders the moment they are placed.
+    const minutes = Number.isFinite(configured) && configured >= 1
+      ? Math.min(configured, 60 * 24 * 30)
+      : DEFAULT_UNPAID_EXPIRY_MINUTES;
+    const cutoff = Date.now() - minutes * 60 * 1000;
+
+    const expired = orders.filter((order) => {
+      if (!isAwaitingCustomerPayment(order)) return false;
+      const placed = new Date(order.createdAt).getTime();
+      // A malformed date must never read as "infinitely old".
+      if (!Number.isFinite(placed)) return false;
+      return placed < cutoff;
+    });
+    if (expired.length === 0) return;
+
+    const expiredIds = new Set(expired.map((order) => order.id));
+    orders = orders.filter((order) => !expiredIds.has(order.id));
+    saveAllData();
+
+    for (const order of expired) {
+      console.log(`[orders:expiry] removed ${order.orderNumber} — unpaid for over ${minutes} minutes`);
+      const chatId = String(order.customerTelegramId || '').trim();
+      if (chatId) {
+        const token = getTelegramBotToken();
+        if (token) {
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: `⌛️ <b>سفارش شما لغو شد</b>\n\n`
+                + `🔖 کد سفارش: <code>${escapeTelegramHtml(order.orderNumber)}</code>\n\n`
+                + `چون تا ${minutes} دقیقه فیش واریزی ارسال نشد، این سفارش به‌صورت خودکار لغو شد.\n`
+                + `در صورت تمایل می‌توانید دوباره سفارش ثبت کنید.`,
+              reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }]] },
+            }),
+          }).catch((err) => console.error('[orders:expiry] could not notify customer:', err));
+        }
+      }
+      sendToTelegramTopic(
+        'orders',
+        `⌛️ <b>سفارش پرداخت‌نشده حذف شد</b>\n\n`
+          + `🔖 کد سفارش: <code>${escapeTelegramHtml(order.orderNumber)}</code>\n`
+          + `👤 مشتری: ${escapeTelegramHtml(order.customerName || '---')}\n`
+          + `💵 مبلغ: <b>${Number(order.totalAmount || 0).toLocaleString()}</b>\n`
+          + `⏱ بدون فیش به مدت ${minutes} دقیقه`,
+      );
+    }
+  }
+
   function runScheduledBackupCheck() {
     if (!backupSchedule || !backupSchedule.enabled) return;
     const now = Date.now();
@@ -7583,6 +7660,11 @@ async function startServer() {
     runScheduledBackupCheck();
   }, 60000);
   runScheduledBackupCheck();
+
+  // Sweep unpaid orders on the same minute tick.
+  setInterval(() => {
+    void expireUnpaidOrders();
+  }, 60000);
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);

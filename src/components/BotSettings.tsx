@@ -981,6 +981,51 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
               </p>
             </div>
           </div>
+
+          {/* Removing orders the customer never paid for */}
+          <div className="mt-5 p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-white">حذف خودکار سفارش پرداخت‌نشده</p>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  اگر مشتری تا مدت تعیین‌شده فیش واریزی نفرستد، سفارش و فاکتورش حذف می‌شود.
+                  سفارش‌های «پرداخت در محل» و سفارش‌هایی که فیششان رسیده شامل نمی‌شوند.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(formData.unpaidOrderExpiryEnabled)}
+                onChange={(e) => handleInputChange('unpaidOrderExpiryEnabled', e.target.checked)}
+                className="w-4 h-4 shrink-0 mt-1 rounded text-rose-600 focus:ring-rose-500 focus:ring-offset-slate-900"
+              />
+            </div>
+
+            {formData.unpaidOrderExpiryEnabled && (
+              <div className="space-y-2">
+                <label className="block text-[11px] font-semibold text-slate-400">
+                  بعد از چند دقیقه حذف شود؟
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={43200}
+                    value={formData.unpaidOrderExpiryMinutes ?? 30}
+                    onChange={(e) => handleInputChange(
+                      'unpaidOrderExpiryMinutes',
+                      Math.min(43200, Math.max(1, parseInt(e.target.value, 10) || 1)),
+                    )}
+                    className="w-28 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-rose-500 font-mono text-center"
+                  />
+                  <span className="text-[11px] text-slate-500">دقیقه (حداقل ۱، حداکثر ۴۳۲۰۰)</span>
+                </div>
+                <p className="text-[11px] text-rose-300/90 leading-relaxed">
+                  ⚠️ حذف برگشت‌ناپذیر است. سفارش از پنل و از «پیگیری سفارشات» مشتری پاک می‌شود
+                  و به مشتری پیام لغو فرستاده می‌شود.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Web Admin Panel Management Section */}

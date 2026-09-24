@@ -2765,6 +2765,69 @@ function testABackupCanRebuildTheShopOnAnotherServer() {
   console.log('✅ a backup carries the pictures, so another server comes up complete');
 }
 
+function testUnpaidOrdersDisappearOnlyWhenTheyShould() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+  const panelSource = read('../src/components/BotSettings.tsx');
+
+  const guard = (serverSource.split('function isAwaitingCustomerPayment')[1] || '')
+    .split('\n  }')[0];
+  assert.ok(guard, 'There must be a rule for which orders are still awaiting payment.');
+
+  // Deleting is irreversible, so each exclusion matters on its own.
+  for (const [needle, why] of [
+    ["paymentMethod === 'cash_on_delivery'", 'a cash-on-delivery order has nothing to pay up front'],
+    ["status !== 'paid_checking'", 'only orders parked at the payment step qualify'],
+    ['order.paymentReceiptImage', 'an order whose receipt arrived is waiting on the shop'],
+    ["receiptReviewStatus === 'confirmed'", 'a confirmed payment must never be removed'],
+  ] as const) {
+    assert.ok(guard.includes(needle), `Must not remove orders where ${why}.`);
+  }
+
+  const sweep = (serverSource.split('async function expireUnpaidOrders')[1] || '')
+    .split('function runScheduledBackupCheck')[0];
+  assert.ok(sweep, 'There must be a sweeper.');
+
+  // Off unless the shop turns it on: nothing may be destroyed by default.
+  assert.ok(
+    /if \(!botSettings\.unpaidOrderExpiryEnabled\) return;/.test(sweep),
+    'The sweeper must do nothing while the setting is off.',
+  );
+  // A zero or negative wait would delete orders the moment they are placed.
+  assert.ok(
+    /configured >= 1/.test(sweep) && /DEFAULT_UNPAID_EXPIRY_MINUTES/.test(sweep),
+    'A missing or nonsensical delay must fall back to a safe default.',
+  );
+  // An unparseable date must not read as infinitely old.
+  assert.ok(
+    /Number\.isFinite\(placed\)/.test(sweep),
+    'A malformed order date must not be treated as expired.',
+  );
+  assert.ok(
+    /isAwaitingCustomerPayment\(order\)/.test(sweep),
+    'The sweeper must apply the exclusion rule.',
+  );
+  // The customer loses an order they may still be paying for; tell them.
+  assert.ok(
+    /سفارش شما لغو شد/.test(sweep),
+    'The customer must be told their order was removed.',
+  );
+  assert.ok(
+    /sendToTelegramTopic\(\s*'orders'/.test(sweep),
+    'The shop must see the removal in its reports.',
+  );
+  assert.ok(
+    /setInterval\(\(\) => \{\s*void expireUnpaidOrders\(\);/.test(serverSource),
+    'The sweeper must actually be scheduled.',
+  );
+  // The shop sets the delay from the panel.
+  assert.ok(
+    /unpaidOrderExpiryEnabled/.test(panelSource) && /unpaidOrderExpiryMinutes/.test(panelSource),
+    'The panel must expose the switch and the delay.',
+  );
+  console.log('✅ an unpaid order is removed on time, and nothing else is');
+}
+
 function testShopNameComesFromSettingsEverywhere() {
   const files: Array<[string, string]> = [
     ['server.ts', fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8')],
@@ -2902,6 +2965,7 @@ async function main() {
   testAdminCanDownloadTheBackupFileFromTheBot();
   testScheduledBackupsReachTheAdminsInTelegram();
   testABackupCanRebuildTheShopOnAnotherServer();
+  testUnpaidOrdersDisappearOnlyWhenTheyShould();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();

@@ -2436,6 +2436,95 @@ function testAdminCanDownloadTheBackupFileFromTheBot() {
   console.log('✅ the admin can pull the backup file straight from the bot');
 }
 
+function testScheduledBackupsReachTheAdminsInTelegram() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+  const typesSource = read('../src/types.ts');
+  const panelSource = read('../src/components/BackupManager.tsx');
+
+  // The shop owner asked for short cycles; the scheduler must know them.
+  const intervals = (serverSource.split('const intervals: Record<string, number>')[1] || '')
+    .split('};')[0];
+  for (const freq of ['every_2_hours', 'every_3_hours', 'every_4_hours']) {
+    assert.ok(intervals.includes(freq), `The scheduler must support ${freq}.`);
+    assert.ok(typesSource.includes(`'${freq}'`), `${freq} must be a known frequency.`);
+  }
+
+  // A free-form interval must be clamped: 0 would back up on every tick.
+  const check = (serverSource.split('function runScheduledBackupCheck')[1] || '')
+    .split('function ')[0];
+  assert.ok(
+    /custom_hours/.test(check) && /customIntervalHours/.test(check),
+    'A custom interval in hours must be honoured.',
+  );
+  assert.ok(
+    /hours >= 1/.test(check),
+    'A custom interval below one hour must be clamped, not trusted.',
+  );
+
+  // The delivery bot token is a credential that must never ride along inside
+  // a backup file, which by design leaves the server.
+  assert.ok(
+    /function omitBackupBotToken/.test(serverSource),
+    'The backup bot token must have a redaction helper.',
+  );
+  const payloadBuilder = (serverSource.split('function generateBackupPayload')[1] || '')
+    .split('function createSnapshotInternal')[0];
+  assert.ok(
+    /omitBackupBotToken\(/.test(payloadBuilder),
+    'The backup payload must strip the delivery bot token.',
+  );
+  const getSchedule = (serverSource.split("app.get('/api/backup/schedule'")[1] || '')
+    .split('});')[0];
+  assert.ok(
+    /omitBackupBotToken\(/.test(getSchedule),
+    'The panel must never receive the delivery bot token back.',
+  );
+  const redact = (serverSource.split('function redactBackupSnapshot')[1] || '').split('\n}')[0];
+  assert.ok(
+    /omitBackupBotToken\(/.test(redact),
+    'Stored snapshots must be redacted before reaching a client.',
+  );
+
+  // Saving the panel form without retyping the token must not erase it.
+  const putSchedule = (serverSource.split("app.put('/api/backup/schedule'")[1] || '')
+    .split('app.')[0];
+  assert.ok(
+    /delete incoming\.backupBotToken/.test(putSchedule),
+    'An omitted token field must leave the stored token untouched.',
+  );
+
+  // Delivery goes to the panel admins, through the separate bot.
+  const deliver = (serverSource.split('async function deliverBackupToAdmins')[1] || '')
+    .split('function runScheduledBackupCheck')[0];
+  assert.ok(deliver, 'There must be a delivery routine.');
+  assert.ok(
+    /backupSchedule\.backupBotToken/.test(deliver),
+    'Delivery must use the dedicated backup bot token, not the shop bot.',
+  );
+  assert.ok(
+    /panelAdminChatIds\(\)/.test(deliver),
+    'The file must go to the panel admins.',
+  );
+  assert.ok(/sendDocument/.test(deliver), 'The backup must be sent as a file.');
+
+  // Telegram refuses a chat that never started the bot. That failure must be
+  // recorded, not swallowed, or the backups go quiet for hours unnoticed.
+  assert.ok(
+    /lastDeliveryStatus/.test(deliver) && /lastDeliveryError/.test(deliver),
+    'Every delivery outcome must be recorded on the schedule.',
+  );
+  assert.ok(
+    /result\.failed \+= 1/.test(deliver),
+    'A refused delivery must count as a failure.',
+  );
+  assert.ok(
+    /hasBackupBotToken/.test(panelSource) && /start/.test(panelSource),
+    'The panel must tell the admin to start the bot first.',
+  );
+  console.log('✅ scheduled backups are delivered to the admins by their own bot');
+}
+
 function testShopNameComesFromSettingsEverywhere() {
   const files: Array<[string, string]> = [
     ['server.ts', fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8')],
@@ -2571,6 +2660,7 @@ async function main() {
   testDeployBuildsTheAppExactlyOnce();
   testUploadsReportTheirProgress();
   testAdminCanDownloadTheBackupFileFromTheBot();
+  testScheduledBackupsReachTheAdminsInTelegram();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();

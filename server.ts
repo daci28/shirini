@@ -291,11 +291,24 @@ function omitSettingsSecrets(settings: unknown): Partial<SecurePanelSettings> {
   return safeSettings as Partial<SecurePanelSettings>;
 }
 
+/**
+ * The backup schedule carries the delivery bot's token. A backup file travels
+ * off the server by design, so the token must be stripped everywhere the
+ * schedule is copied out — otherwise every archive hands out the credential.
+ */
+function omitBackupBotToken(schedule: BackupScheduleConfig): BackupScheduleConfig {
+  const { backupBotToken: _omitted, ...safe } = schedule || ({} as BackupScheduleConfig);
+  return safe as BackupScheduleConfig;
+}
+
 /** Older snapshots may contain secrets; redact them before they ever reach a client. */
 function redactBackupSnapshot(snapshot: BackupSnapshot): BackupSnapshot {
   const copied = JSON.parse(JSON.stringify(snapshot)) as BackupSnapshot;
   if (copied.payload?.data?.botSettings) {
     copied.payload.data.botSettings = omitPanelPassword(copied.payload.data.botSettings) as BotSettings;
+  }
+  if (copied.payload?.data?.backupSchedule) {
+    copied.payload.data.backupSchedule = omitBackupBotToken(copied.payload.data.backupSchedule);
   }
   return copied;
 }
@@ -798,7 +811,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-file-from-bot';
+const APP_REVISION = '2026-09-24-scheduled-backup-delivery';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -3900,7 +3913,7 @@ async function startServer() {
       discounts: JSON.parse(JSON.stringify(discounts)),
       supportTickets: JSON.parse(JSON.stringify(supportTickets)),
       botSettings: JSON.parse(JSON.stringify(omitPanelPassword(botSettings))),
-      backupSchedule: JSON.parse(JSON.stringify(backupSchedule))
+      backupSchedule: omitBackupBotToken(JSON.parse(JSON.stringify(backupSchedule)))
     };
 
     const payloadString = JSON.stringify(rawData);
@@ -3989,23 +4002,127 @@ async function startServer() {
     return snapshot;
   }
 
+  /** Every panel admin that can receive a Telegram message. */
+  function panelAdminChatIds(): string[] {
+    return [
+      botSettings.adminTelegramId,
+      ...(Array.isArray(botSettings.adminTelegramIds) ? botSettings.adminTelegramIds : []),
+    ]
+      .filter((id): id is string => id !== undefined && id !== null && String(id).trim() !== '')
+      .map((id) => String(id).trim())
+      .filter((id, index, all) => all.indexOf(id) === index);
+  }
+
+  /**
+   * Deliver a snapshot to the panel admins through the dedicated backup bot.
+   *
+   * A bot may only message someone who has already started it, so a failure
+   * here is expected and must be recorded rather than swallowed: the schedule
+   * keeps the reason so the panel can show why the last delivery did not
+   * arrive, instead of silently going quiet for hours.
+   */
+  async function deliverBackupToAdmins(
+    snapshot: BackupSnapshot,
+    trigger: 'scheduled' | 'test',
+  ): Promise<{ sent: number; failed: number; errors: string[] }> {
+    const token = String(backupSchedule.backupBotToken || '').trim();
+    const admins = panelAdminChatIds();
+    const result = { sent: 0, failed: 0, errors: [] as string[] };
+
+    if (!token) {
+      result.errors.push('توکن بات بکاپ ثبت نشده است.');
+      return result;
+    }
+    if (admins.length === 0) {
+      result.errors.push('هیچ ادمینی در تنظیمات ثبت نشده است.');
+      return result;
+    }
+
+    const serialized = JSON.stringify(snapshot.payload, null, 2);
+    const bytes = Buffer.byteLength(serialized, 'utf8');
+    const TELEGRAM_DOCUMENT_LIMIT = 50 * 1024 * 1024;
+    if (bytes > TELEGRAM_DOCUMENT_LIMIT) {
+      result.failed = admins.length;
+      result.errors.push(`حجم بکاپ (${(bytes / 1048576).toFixed(1)} مگابایت) از حد ۵۰ مگابایت تلگرام بیشتر است.`);
+      return result;
+    }
+
+    const caption = `💾 <b>پشتیبان خودکار ${escapeTelegramHtml(storeName())}</b>\n\n`
+      + `${trigger === 'test' ? '🧪 این یک ارسال آزمایشی است.\n\n' : ''}`
+      + `⏰ زمان: <b>${formatIranianDateTime(snapshot.timestamp)}</b>\n`
+      + `📦 حجم: <b>${(bytes / 1024).toFixed(1)} کیلوبایت</b>\n`
+      + `🧁 محصولات: <b>${snapshot.stats.productsCount}</b>\n`
+      + `📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>\n`
+      + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n\n`
+      + `🔐 این فایل شامل رمز پنل و توکن بات نیست.`;
+
+    for (const adminId of admins) {
+      try {
+        const form = new FormData();
+        form.append('chat_id', adminId);
+        form.append('parse_mode', 'HTML');
+        form.append('caption', caption);
+        form.append('document', new Blob([serialized], { type: 'application/json' }), snapshot.filename);
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+          method: 'POST',
+          body: form,
+        });
+        const body: any = await res.json().catch(() => null);
+        if (body?.ok) {
+          result.sent += 1;
+          continue;
+        }
+        result.failed += 1;
+        const reason = String(body?.description || 'نامشخص');
+        result.errors.push(`${adminId}: ${reason}`);
+        console.error(`[backup:delivery] ${adminId} failed: ${reason}`);
+      } catch (err) {
+        result.failed += 1;
+        result.errors.push(`${adminId}: ${String(err)}`);
+        console.error(`[backup:delivery] ${adminId} threw:`, err);
+      }
+    }
+
+    backupSchedule.lastDeliveryAt = new Date().toISOString();
+    backupSchedule.lastDeliveryStatus = result.sent > 0 && result.failed === 0 ? 'sent' : 'failed';
+    backupSchedule.lastDeliveryError = result.errors.length ? result.errors.join(' | ') : undefined;
+    saveAllData();
+    return result;
+  }
+
   function runScheduledBackupCheck() {
     if (!backupSchedule || !backupSchedule.enabled) return;
     const now = Date.now();
     const lastTime = backupSchedule.lastBackupTime ? new Date(backupSchedule.lastBackupTime).getTime() : 0;
     const intervals: Record<string, number> = {
       hourly: 3600 * 1000,
+      every_2_hours: 2 * 3600 * 1000,
+      every_3_hours: 3 * 3600 * 1000,
+      every_4_hours: 4 * 3600 * 1000,
       every_6_hours: 6 * 3600 * 1000,
       every_12_hours: 12 * 3600 * 1000,
       daily: 24 * 3600 * 1000,
       weekly: 7 * 24 * 3600 * 1000,
       every_order: 3600 * 1000
     };
-    const intervalMs = intervals[backupSchedule.frequency] || intervals.daily;
+    let intervalMs = intervals[backupSchedule.frequency] || intervals.daily;
+    if (backupSchedule.frequency === 'custom_hours') {
+      // Clamp the free-form value: 0 would back up on every tick and a
+      // negative or missing number would make the interval meaningless.
+      const hours = Number(backupSchedule.customIntervalHours);
+      intervalMs = (Number.isFinite(hours) && hours >= 1 ? Math.min(hours, 24 * 30) : 24) * 3600 * 1000;
+    }
     if (now - lastTime >= intervalMs) {
       console.log(`[backup:daemon] Triggering automated scheduled backup (frequency: ${backupSchedule.frequency})`);
       const snapshot = createSnapshotInternal('scheduled');
       saveAllData();
+      if (backupSchedule.sendBackupToAdmins && backupSchedule.backupBotToken) {
+        // Fire and forget: the daemon tick must not block on Telegram, and
+        // every outcome is recorded on the schedule itself.
+        void deliverBackupToAdmins(snapshot, 'scheduled').then((outcome) => {
+          console.log(`[backup:delivery] scheduled -> sent=${outcome.sent} failed=${outcome.failed}`);
+        });
+      }
       if (backupSchedule.notifyTelegramTopic) {
         sendToTelegramTopic(
           'system_backups',
@@ -4246,20 +4363,72 @@ async function startServer() {
     res.json({ success: true, message: 'نقطه بازیابی حذف گردید.' });
   });
 
+  // Send a backup to the admins right now, so a wrong token or an admin who
+  // never started the bot is discovered here instead of silently hours later.
+  app.post('/api/backup/test-delivery', async (req: Request, res: Response) => {
+    const token = String(backupSchedule.backupBotToken || '').trim();
+    if (!token) {
+      res.status(400).json({ success: false, message: 'ابتدا توکن بات بکاپ را ثبت و ذخیره کنید.' });
+      return;
+    }
+    const admins = panelAdminChatIds();
+    if (admins.length === 0) {
+      res.status(400).json({ success: false, message: 'هیچ ادمینی در تنظیمات ربات ثبت نشده است.' });
+      return;
+    }
+    try {
+      const snapshot = createSnapshotInternal('manual');
+      const outcome = await deliverBackupToAdmins(snapshot, 'test');
+      const ok = outcome.sent > 0 && outcome.failed === 0;
+      res.json({
+        success: ok,
+        sent: outcome.sent,
+        failed: outcome.failed,
+        errors: outcome.errors,
+        message: ok
+          ? `فایل بکاپ برای ${outcome.sent} ادمین ارسال شد.`
+          : `ارسال کامل نشد (موفق: ${outcome.sent}، ناموفق: ${outcome.failed}). `
+            + `${outcome.errors.join(' | ')}`
+            + (outcome.errors.some((e) => /chat not found|bot can't initiate|blocked/i.test(e))
+              ? ' — ادمین باید یک بار بات بکاپ را در تلگرام باز کند و /start بزند.'
+              : ''),
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'ارسال آزمایشی ناموفق بود: ' + err.message });
+    }
+  });
+
   // 7. Get backup schedule
   app.get('/api/backup/schedule', (req: Request, res: Response) => {
-    res.json(backupSchedule);
+    // Report only whether a token is configured; never hand the value back.
+    res.json({
+      ...omitBackupBotToken(backupSchedule),
+      hasBackupBotToken: Boolean(backupSchedule.backupBotToken),
+    });
   });
 
   // 8. Update backup schedule
   app.put('/api/backup/schedule', (req: Request, res: Response) => {
-    backupSchedule = { ...backupSchedule, ...req.body };
+    const incoming = { ...req.body };
+    // The panel never receives the token, so an absent or blank field means
+    // "leave it alone" rather than "delete it". Clearing is explicit.
+    if (!('backupBotToken' in incoming) || incoming.backupBotToken === undefined) {
+      delete incoming.backupBotToken;
+    } else if (typeof incoming.backupBotToken === 'string' && incoming.backupBotToken.trim() === '') {
+      incoming.backupBotToken = undefined;
+    } else {
+      incoming.backupBotToken = String(incoming.backupBotToken).trim();
+    }
+    backupSchedule = { ...backupSchedule, ...incoming };
     saveAllData();
     runScheduledBackupCheck();
     res.json({
       success: true,
       message: 'تنظیمات زمان‌بندی پشتیبان‌گیری با موفقیت ذخیره شد.',
-      schedule: backupSchedule
+      schedule: {
+        ...omitBackupBotToken(backupSchedule),
+        hasBackupBotToken: Boolean(backupSchedule.backupBotToken),
+      }
     });
   });
 

@@ -92,6 +92,12 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const [scheduleState, setScheduleState] = useState<BackupScheduleConfig>(backupSchedule);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleSuccessMsg, setScheduleSuccessMsg] = useState(false);
+  // The server never sends the token back, so the box starts empty and only
+  // carries a value when the admin is deliberately setting a new one.
+  const [backupBotTokenInput, setBackupBotTokenInput] = useState('');
+  const [testingDelivery, setTestingDelivery] = useState(false);
+  const [testDeliveryResult, setTestDeliveryResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const hasSavedBackupToken = Boolean((backupSchedule as any)?.hasBackupBotToken);
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
   const [snapshotSuccessMsg, setSnapshotSuccessMsg] = useState<string | null>(null);
   
@@ -220,13 +226,44 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const handleSaveSchedule = async () => {
     setScheduleSaving(true);
     try {
-      await onUpdateSchedule(scheduleState);
+      // Only send the token when a new one was typed; an empty box must leave
+      // the stored token untouched rather than wiping it.
+      const payload: any = { ...scheduleState };
+      const typed = backupBotTokenInput.trim();
+      if (typed) payload.backupBotToken = typed;
+      await onUpdateSchedule(payload);
+      setBackupBotTokenInput('');
+      setTestDeliveryResult(null);
       setScheduleSuccessMsg(true);
       setTimeout(() => setScheduleSuccessMsg(false), 4000);
     } catch (e: any) {
       alert('خطا در ذخیره زمان‌بندی: ' + e.message);
     } finally {
       setScheduleSaving(false);
+    }
+  };
+
+  // Prove the delivery bot works now, rather than finding out hours later.
+  const handleTestDelivery = async () => {
+    setTestingDelivery(true);
+    setTestDeliveryResult(null);
+    try {
+      const typed = backupBotTokenInput.trim();
+      if (typed) {
+        // Save first, otherwise the test would use the previous token.
+        await onUpdateSchedule({ ...scheduleState, backupBotToken: typed } as any);
+        setBackupBotTokenInput('');
+      }
+      const res = await fetch('/api/backup/test-delivery', { method: 'POST' });
+      const body = await res.json().catch(() => null);
+      setTestDeliveryResult({
+        ok: Boolean(body?.success),
+        message: body?.message || 'ارسال آزمایشی ناموفق بود.',
+      });
+    } catch (e: any) {
+      setTestDeliveryResult({ ok: false, message: 'ارسال آزمایشی ناموفق بود: ' + e.message });
+    } finally {
+      setTestingDelivery(false);
     }
   };
 
@@ -752,12 +789,37 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                 className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs font-medium focus:border-indigo-500 focus:outline-none"
               >
                 <option value="daily">روزانه در ساعت مشخص (پیشنهادی)</option>
+                <option value="every_2_hours">هر ۲ ساعت یکبار</option>
+                <option value="every_3_hours">هر ۳ ساعت یکبار</option>
+                <option value="every_4_hours">هر ۴ ساعت یکبار</option>
                 <option value="every_6_hours">هر ۶ ساعت یکبار</option>
                 <option value="every_12_hours">هر ۱۲ ساعت یکبار</option>
                 <option value="weekly">هفتگی در روزهای انتخابی</option>
                 <option value="hourly">ساعتی (برای روزهای شلوغ و جشن‌ها)</option>
+                <option value="custom_hours">دوره دلخواه (هر چند ساعت یکبار)</option>
                 <option value="every_order">بلافاصله پس از ثبت هر سفارش جدید</option>
               </select>
+              {scheduleState.frequency === 'custom_hours' && (
+                <div className="pt-2 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-400">
+                    هر چند ساعت یکبار بکاپ گرفته شود؟
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={720}
+                      value={scheduleState.customIntervalHours ?? 3}
+                      onChange={(e) => setScheduleState(prev => ({
+                        ...prev,
+                        customIntervalHours: Math.min(720, Math.max(1, Number(e.target.value) || 1)),
+                      }))}
+                      className="w-24 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono text-center focus:border-indigo-500 focus:outline-none"
+                    />
+                    <span className="text-[11px] text-slate-500">ساعت (حداقل ۱، حداکثر ۷۲۰)</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Time of Day */}
@@ -807,6 +869,81 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
               </div>
             </div>
 
+          </div>
+
+          {/* Dedicated bot that delivers each backup file to the panel admins */}
+          <div className="space-y-3 pt-2">
+            <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-white">ارسال خودکار فایل بکاپ در تلگرام</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    طبق همین زمان‌بندی، فایل JSON بکاپ برای همهٔ ادمین‌های ربات فرستاده می‌شود.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(scheduleState.sendBackupToAdmins)}
+                  onChange={(e) => setScheduleState(prev => ({ ...prev, sendBackupToAdmins: e.target.checked }))}
+                  className="w-4 h-4 shrink-0 rounded text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] font-semibold text-slate-400">
+                  توکن بات ارسال بکاپ
+                  {hasSavedBackupToken && (
+                    <span className="text-emerald-400 font-normal"> — یک توکن ذخیره شده است</span>
+                  )}
+                </label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={backupBotTokenInput}
+                  onChange={(e) => setBackupBotTokenInput(e.target.value)}
+                  placeholder={hasSavedBackupToken ? 'برای تغییر، توکن جدید را وارد کنید' : '123456789:AAE...'}
+                  className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                  dir="ltr"
+                />
+                <p className="text-[11px] text-amber-300/80 leading-relaxed">
+                  ⚠️ بعد از ذخیره، هر ادمین باید یک بار این بات را در تلگرام باز کند و <code>/start</code> بزند؛
+                  تلگرام اجازه نمی‌دهد یک بات به کسی که آن را شروع نکرده پیام بفرستد.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestDelivery}
+                  disabled={testingDelivery}
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-colors"
+                >
+                  {testingDelivery ? 'در حال ارسال…' : '🧪 ارسال آزمایشی همین حالا'}
+                </button>
+                {scheduleState.lastDeliveryAt && (
+                  <span className={`text-[11px] ${scheduleState.lastDeliveryStatus === 'sent' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    آخرین ارسال: {formatDatePersian(scheduleState.lastDeliveryAt)}
+                    {scheduleState.lastDeliveryStatus === 'sent' ? ' ✅' : ' ❌'}
+                  </span>
+                )}
+              </div>
+
+              {testDeliveryResult && (
+                <div className={`p-3 rounded-xl text-[11px] leading-relaxed border ${
+                  testDeliveryResult.ok
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                }`}>
+                  {testDeliveryResult.message}
+                </div>
+              )}
+
+              {scheduleState.lastDeliveryStatus === 'failed' && scheduleState.lastDeliveryError && !testDeliveryResult && (
+                <div className="p-3 rounded-xl text-[11px] leading-relaxed bg-rose-500/10 border border-rose-500/30 text-rose-300">
+                  ⚠️ آخرین ارسال خودکار ناموفق بود: {scheduleState.lastDeliveryError}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Days of week selection for weekly schedule */}

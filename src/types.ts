@@ -311,12 +311,36 @@ export interface WalletTransaction {
 
 export interface BackupScheduleConfig {
   enabled: boolean;
-  frequency: 'hourly' | 'every_6_hours' | 'every_12_hours' | 'daily' | 'weekly' | 'every_order';
+  frequency:
+    | 'hourly'
+    | 'every_2_hours'
+    | 'every_3_hours'
+    | 'every_4_hours'
+    | 'every_6_hours'
+    | 'every_12_hours'
+    | 'daily'
+    | 'weekly'
+    | 'every_order'
+    | 'custom_hours';
+  /** Interval in hours when frequency is 'custom_hours'. */
+  customIntervalHours?: number;
   timeOfDay: string; // e.g. "23:30" or "02:00"
   selectedDays: number[]; // 0=Saturday, 1=Sunday, ... 6=Friday
   autoDownload: boolean;
   keepLastSnapshots: number; // e.g. 10
   notifyTelegramTopic: boolean;
+  /**
+   * Optional separate bot that delivers each scheduled backup file straight to
+   * the panel admins in Telegram. Kept apart from the shop bot so the archive
+   * can live in its own chat. Never leaves the server: it is stripped from
+   * backup payloads and from the schedule the panel reads back.
+   */
+  backupBotToken?: string;
+  sendBackupToAdmins?: boolean;
+  /** Outcome of the most recent delivery attempt, so silent failure is visible. */
+  lastDeliveryStatus?: 'sent' | 'failed';
+  lastDeliveryAt?: string;
+  lastDeliveryError?: string;
   lastBackupTime?: string;
   nextBackupTime?: string;
 }

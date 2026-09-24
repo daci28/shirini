@@ -328,7 +328,13 @@ if (persistedData) {
   customers = dedupeCustomers(customers);
   walletTransactions = persistedData.walletTransactions || walletTransactions;
   backupSnapshots = (persistedData.backupSnapshots || backupSnapshots).map(redactBackupSnapshot);
-  backupSchedule = persistedData.backupSchedule || backupSchedule;
+  // Merge rather than replace: an older or partially written file may hold
+  // only a couple of keys, and dropping the defaults leaves fields like
+  // selectedDays undefined, which crashes the scheduling screen.
+  backupSchedule = { ...backupSchedule, ...(persistedData.backupSchedule || {}) };
+  if (!Array.isArray(backupSchedule.selectedDays)) {
+    backupSchedule.selectedDays = [...INITIAL_BACKUP_SCHEDULE.selectedDays];
+  }
   broadcasts = persistedData.broadcasts || broadcasts;
 
   // Repair tickets saved before the opening message was mirrored into
@@ -811,7 +817,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-scheduled-backup-delivery';
+const APP_REVISION = '2026-09-24-fix-schedule-tab-crash';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',

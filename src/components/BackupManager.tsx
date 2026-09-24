@@ -373,10 +373,10 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
 
   const toggleDay = (dayId: number) => {
     setScheduleState(prev => {
-      const exists = prev.selectedDays.includes(dayId);
+      const exists = (prev.selectedDays || []).includes(dayId);
       const updated = exists 
-        ? prev.selectedDays.filter(d => d !== dayId)
-        : [...prev.selectedDays, dayId].sort();
+        ? (prev.selectedDays || []).filter(d => d !== dayId)
+        : [...(prev.selectedDays || []), dayId].sort();
       return { ...prev, selectedDays: updated };
     });
   };
@@ -953,7 +953,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
               {weekdays.map((day) => {
-                const isSelected = scheduleState.selectedDays.includes(day.id);
+                const isSelected = (scheduleState.selectedDays || []).includes(day.id);
                 return (
                   <button
                     key={day.id}

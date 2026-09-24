@@ -2522,6 +2522,19 @@ function testScheduledBackupsReachTheAdminsInTelegram() {
     /hasBackupBotToken/.test(panelSource) && /start/.test(panelSource),
     'The panel must tell the admin to start the bot first.',
   );
+
+  // A stored schedule written by an older build holds only a couple of keys.
+  // Replacing the defaults with it leaves selectedDays undefined, and the
+  // scheduling screen then white-screens before the token box can be reached.
+  assert.ok(
+    /backupSchedule = \{ \.\.\.backupSchedule, \.\.\.\(persistedData\.backupSchedule \|\| \{\}\) \}/.test(serverSource),
+    'A partial stored schedule must be merged onto the defaults, not replace them.',
+  );
+  assert.ok(
+    !/(?<!\|\| \[\]\))\bscheduleState\.selectedDays\.includes/.test(panelSource)
+      && !/\bprev\.selectedDays\.(includes|filter)\(/.test(panelSource),
+    'The scheduling screen must not assume selectedDays exists.',
+  );
   console.log('✅ scheduled backups are delivered to the admins by their own bot');
 }
 

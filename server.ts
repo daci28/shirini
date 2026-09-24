@@ -838,7 +838,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-carries-images';
+const APP_REVISION = '2026-09-24-backup-memory-safe';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -3937,13 +3937,24 @@ async function startServer() {
    * token is in use, but once the shop switches bots the cache is the only
    * copy left, so it travels as well.
    */
+  // Order matters: the budget is filled from the top. Panel uploads exist
+  // nowhere else, while the Telegram cache can be refetched, so uploads are
+  // taken first and the cache is what gets dropped when space runs out.
   const BACKUP_FILE_DIRS: { key: string; dir: string }[] = [
     { key: 'product-images', dir: PRODUCT_IMAGE_DIR },
     { key: 'telegram-file-cache', dir: TELEGRAM_FILE_CACHE_DIR },
   ];
 
-  /** Total bytes of attachments a single backup may carry, before encoding. */
-  const BACKUP_FILE_BUDGET = 150 * 1024 * 1024;
+  /**
+   * Total bytes of attachments a single backup may carry, before encoding.
+   *
+   * Deliberately conservative: the bytes are held as base64 (about 1.37x),
+   * that string is embedded in the payload, and the payload is serialized
+   * again on the way out — so peak memory is several times this number. A
+   * 512MB container is killed outright (exit 137) long before the disk runs
+   * out, which loses the backup with no error at all.
+   */
+  const BACKUP_FILE_BUDGET = 40 * 1024 * 1024;
 
   interface BackupFileSet {
     files: Record<string, string>;
@@ -3982,6 +3993,12 @@ async function startServer() {
           skipped.push(`${key}/${name}`);
         }
       }
+    }
+    if (skipped.length > 0) {
+      console.warn(
+        `[backup] ${skipped.length} attachment(s) exceeded the ${Math.round(BACKUP_FILE_BUDGET / 1048576)}MB `
+        + 'budget and are NOT in this backup. Restoring it elsewhere will leave those pictures missing.',
+      );
     }
     return { files, stats: { count: Object.keys(files).length, bytes, skipped } };
   }
@@ -4180,8 +4197,13 @@ async function startServer() {
       + `📦 حجم: <b>${(bytes / 1024).toFixed(1)} کیلوبایت</b>\n`
       + `🧁 محصولات: <b>${snapshot.stats.productsCount}</b>\n`
       + `📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>\n`
-      + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n\n`
-      + `🔐 این فایل شامل رمز پنل و توکن بات نیست.`;
+      + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n`
+      + `🖼 تصاویر همراه: <b>${snapshot.payload?.metadata?.filesCount ?? 0}</b>\n`
+      + ((snapshot.payload?.metadata?.filesSkipped?.length || 0) > 0
+        ? `\n⚠️ <b>${snapshot.payload.metadata.filesSkipped!.length} تصویر به دلیل حجم زیاد در این بکاپ نیست.</b>\n`
+          + `برای انتقال کامل، پوشهٔ product-images را هم دستی کپی کنید.\n`
+        : '')
+      + `\n🔐 این فایل شامل رمز پنل و توکن بات نیست.`;
 
     for (const adminId of admins) {
       try {

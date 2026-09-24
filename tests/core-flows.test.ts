@@ -2602,6 +2602,25 @@ function testABackupCanRebuildTheShopOnAnotherServer() {
     /BACKUP_FILE_BUDGET/.test(collect) && /skipped\.push/.test(collect),
     'Oversized attachment sets must be reported, not silently truncated.',
   );
+  // The budget guards memory, not disk: the bytes become base64, get embedded
+  // in the payload and serialized again, so a generous figure kills a small
+  // container outright (exit 137) and the backup is lost with no error.
+  const budget = Number(
+    (serverSource.match(/BACKUP_FILE_BUDGET = (\d+) \* 1024 \* 1024/) || [])[1] || 0,
+  );
+  assert.ok(budget > 0 && budget <= 64, `The attachment budget must stay small; found ${budget}MB.`);
+  assert.ok(
+    /if \(skipped\.length > 0\) \{[\s\S]{0,400}console\.warn/.test(collect),
+    'Dropping attachments must be visible in the log, not silent.',
+  );
+  // Panel uploads exist nowhere else, so they must claim the budget before
+  // the Telegram cache, which can be refetched.
+  const dirs = (serverSource.split('BACKUP_FILE_DIRS: { key: string; dir: string }[] = [')[1] || '')
+    .split('];')[0];
+  assert.ok(
+    dirs.indexOf('product-images') < dirs.indexOf('telegram-file-cache'),
+    'Product images must be collected before the refetchable cache.',
+  );
 
   // The payload must actually carry them.
   const builder = (serverSource.split('function generateBackupPayload')[1] || '')

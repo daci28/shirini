@@ -397,6 +397,9 @@ const PRODUCT_IMAGE_FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:avif|gif
 // zooming it) does not repeatedly wait for Telegram on every panel visit.
 const TELEGRAM_FILE_CACHE_DIR = path.join(DATA_DIR, 'telegram-file-cache');
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+
+/** Order total at the last backup check, so a new order can be detected. */
+let lastSeenOrderCount = 0;
 if (!fs.existsSync(BACKUPS_DIR)) {
   fs.mkdirSync(BACKUPS_DIR, { recursive: true });
 }
@@ -801,6 +804,10 @@ function hydrateLegacyTicketCustomers(): boolean {
   return changed;
 }
 
+// Seed the order counter from what is already on disk, so the first check
+// after a restart does not mistake existing orders for a brand new one.
+lastSeenOrderCount = orders.length + customOrders.length;
+
 if (hydrateLegacyTicketCustomers()) {
   saveAllData();
   console.log('Enriched legacy support ticket customer details');
@@ -817,7 +824,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-fix-schedule-tab-crash';
+const APP_REVISION = '2026-09-24-backup-after-every-order';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -1123,6 +1130,7 @@ async function startServer() {
       newOrder.receiptSubmittedAt = newOrder.receiptSubmittedAt || new Date().toISOString();
     }
     orders.unshift(newOrder);
+    backupAfterOrderIfNeeded();
 
     // If order used a coupon code, increment usedCount
     if (newOrder.couponCode) {
@@ -1894,6 +1902,7 @@ async function startServer() {
       };
 
       customOrders.unshift(newOrder);
+      backupAfterOrderIfNeeded();
       upsertCustomerFromCustomOrder(newOrder);
       saveAllData();
 
@@ -4096,8 +4105,48 @@ async function startServer() {
     return result;
   }
 
+  /**
+   * Back up because an order just arrived, when the schedule is set to
+   * "after every new order". Detection is by count rather than by hooking one
+   * call site, so an order created through any path — the HTTP API, the bot
+   * checkout, or a custom pastry request — is covered, and re-entry cannot
+   * produce a second backup for the same order.
+   */
+  function backupAfterOrderIfNeeded(): void {
+    const total = orders.length + customOrders.length;
+    if (total <= lastSeenOrderCount) {
+      // Also track deletions, so a removal followed by a new order still fires.
+      lastSeenOrderCount = total;
+      return;
+    }
+    lastSeenOrderCount = total;
+    if (!backupSchedule || !backupSchedule.enabled) return;
+    if (backupSchedule.frequency !== 'every_order') return;
+
+    console.log('[backup:daemon] Triggering backup after a new order');
+    const snapshot = createSnapshotInternal('scheduled');
+    saveAllData();
+    if (backupSchedule.sendBackupToAdmins && backupSchedule.backupBotToken) {
+      void deliverBackupToAdmins(snapshot, 'scheduled').then((outcome) => {
+        console.log(`[backup:delivery] after-order -> sent=${outcome.sent} failed=${outcome.failed}`);
+      });
+    }
+    if (backupSchedule.notifyTelegramTopic) {
+      sendToTelegramTopic(
+        'system_backups',
+        `💾 <b>پشتیبان‌گیری پس از ثبت سفارش جدید انجام شد:</b>\n\n📁 فایل: <code>${snapshot.filename}</code>\n📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>`,
+      );
+    }
+  }
+
   function runScheduledBackupCheck() {
     if (!backupSchedule || !backupSchedule.enabled) return;
+    // "after every new order" is event driven; a clock must not also fire it,
+    // otherwise the setting silently behaves like an hourly backup.
+    if (backupSchedule.frequency === 'every_order') {
+      backupAfterOrderIfNeeded();
+      return;
+    }
     const now = Date.now();
     const lastTime = backupSchedule.lastBackupTime ? new Date(backupSchedule.lastBackupTime).getTime() : 0;
     const intervals: Record<string, number> = {
@@ -4108,8 +4157,7 @@ async function startServer() {
       every_6_hours: 6 * 3600 * 1000,
       every_12_hours: 12 * 3600 * 1000,
       daily: 24 * 3600 * 1000,
-      weekly: 7 * 24 * 3600 * 1000,
-      every_order: 3600 * 1000
+      weekly: 7 * 24 * 3600 * 1000
     };
     let intervalMs = intervals[backupSchedule.frequency] || intervals.daily;
     if (backupSchedule.frequency === 'custom_hours') {
@@ -5389,7 +5437,12 @@ async function startServer() {
         if (checkoutState && checkoutState.mode?.startsWith('checkout_')) {
           const tgCtx = { token, chatId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg };
           const handled = await handleCheckoutState(tgCtx, text);
-          if (handled) return;
+          if (handled) {
+            // The checkout module owns the order array directly, so check for
+            // a newly placed order once it hands control back.
+            backupAfterOrderIfNeeded();
+            return;
+          }
         }
       }
       // Handle photo uploads and supported image documents only when Telegram
@@ -6411,6 +6464,7 @@ async function startServer() {
           updatedAt: new Date().toISOString()
         };
         customOrders.unshift(newCustomOrder);
+        backupAfterOrderIfNeeded();
         saveAllData();
         userStates.delete(chatId);
         sendToTelegramTopic(
@@ -6917,6 +6971,7 @@ async function startServer() {
         const tgCtx = { token, chatId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg: { from: cb.from } };
         const handled = await handleCheckoutCallback(tgCtx, data);
         if (handled) {
+          backupAfterOrderIfNeeded();
           saveAllData();
           return;
         }

@@ -2523,6 +2523,46 @@ function testScheduledBackupsReachTheAdminsInTelegram() {
     'The panel must tell the admin to start the bot first.',
   );
 
+  // "after every new order" is an event, not a clock. It used to sit in the
+  // interval table as one hour, so the setting silently behaved like an
+  // hourly backup and no order ever triggered one.
+  assert.ok(
+    !/every_order:\s*\d/.test(intervals),
+    'every_order must not be driven by the interval table.',
+  );
+  assert.ok(
+    /function backupAfterOrderIfNeeded/.test(serverSource),
+    'There must be a routine that backs up when an order arrives.',
+  );
+  const afterOrder = (serverSource.split('function backupAfterOrderIfNeeded')[1] || '')
+    .split('function runScheduledBackupCheck')[0];
+  assert.ok(
+    /frequency !== 'every_order'/.test(afterOrder),
+    'An order must only trigger a backup in the every_order mode.',
+  );
+  assert.ok(
+    /backupSchedule\.enabled/.test(afterOrder),
+    'A disabled schedule must not back up on an order.',
+  );
+  // Counting guards against firing twice for one order and against missing an
+  // order placed through a path that forgot to call the hook.
+  assert.ok(
+    /orders\.length \+ customOrders\.length/.test(afterOrder)
+      && /total <= lastSeenOrderCount/.test(afterOrder),
+    'New orders must be detected by count so the backup cannot double-fire.',
+  );
+  assert.ok(
+    /lastSeenOrderCount = orders\.length \+ customOrders\.length;/.test(serverSource),
+    'The order counter must be seeded at startup, or the first check backs up spuriously.',
+  );
+  // Every creation path must reach the hook: HTTP order, HTTP custom order,
+  // bot custom order, and both bot checkout handlers.
+  const hookCalls = (serverSource.match(/backupAfterOrderIfNeeded\(\);/g) || []).length;
+  assert.ok(
+    hookCalls >= 6,
+    `Every order creation path must notify the backup hook (found ${hookCalls}).`,
+  );
+
   // A stored schedule written by an older build holds only a couple of keys.
   // Replacing the defaults with it leaves selectedDays undefined, and the
   // scheduling screen then white-screens before the token box can be reached.

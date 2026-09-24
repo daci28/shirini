@@ -838,7 +838,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-frequencies-verified';
+const APP_REVISION = '2026-09-24-backup-carries-images';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -867,6 +867,10 @@ async function startServer() {
   // Railway terminates TLS before forwarding requests to the app. Trust that
   // single proxy so secure cookies work both on Railway and in local development.
   app.set('trust proxy', 1);
+  // A backup now carries the shop's pictures, so restoring one is far larger
+  // than any ordinary request. This must be registered before the general
+  // parser below, which would otherwise read the body first and reject it.
+  app.use('/api/backup/import', express.json({ limit: '512mb' }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -3924,6 +3928,94 @@ async function startServer() {
   // --- Master Backup & Migration System ---
   // ==========================================
 
+  /**
+   * Directories whose contents a backup must carry.
+   *
+   * Panel uploads live only here — the records reference them by path, so a
+   * restore without the bytes leaves every product picture broken. Telegram
+   * receipts are cached here too; they can be refetched while the same bot
+   * token is in use, but once the shop switches bots the cache is the only
+   * copy left, so it travels as well.
+   */
+  const BACKUP_FILE_DIRS: { key: string; dir: string }[] = [
+    { key: 'product-images', dir: PRODUCT_IMAGE_DIR },
+    { key: 'telegram-file-cache', dir: TELEGRAM_FILE_CACHE_DIR },
+  ];
+
+  /** Total bytes of attachments a single backup may carry, before encoding. */
+  const BACKUP_FILE_BUDGET = 150 * 1024 * 1024;
+
+  interface BackupFileSet {
+    files: Record<string, string>;
+    stats: { count: number; bytes: number; skipped: string[] };
+  }
+
+  /** Read every stored attachment so the backup can rebuild them elsewhere. */
+  function collectBackupFiles(): BackupFileSet {
+    const files: Record<string, string> = {};
+    const skipped: string[] = [];
+    let bytes = 0;
+
+    for (const { key, dir } of BACKUP_FILE_DIRS) {
+      let names: string[];
+      try {
+        if (!fs.existsSync(dir)) continue;
+        names = fs.readdirSync(dir);
+      } catch (err) {
+        console.error(`[backup] cannot list ${dir}:`, err);
+        continue;
+      }
+      for (const name of names) {
+        const full = path.join(dir, name);
+        try {
+          const stat = fs.statSync(full);
+          if (!stat.isFile()) continue;
+          if (bytes + stat.size > BACKUP_FILE_BUDGET) {
+            // Record what was left out rather than silently truncating.
+            skipped.push(`${key}/${name}`);
+            continue;
+          }
+          files[`${key}/${name}`] = fs.readFileSync(full).toString('base64');
+          bytes += stat.size;
+        } catch (err) {
+          console.error(`[backup] cannot read ${full}:`, err);
+          skipped.push(`${key}/${name}`);
+        }
+      }
+    }
+    return { files, stats: { count: Object.keys(files).length, bytes, skipped } };
+  }
+
+  /** Write attachments from a backup back onto this server's disk. */
+  function restoreBackupFiles(files: unknown): { restored: number; failed: string[] } {
+    const failed: string[] = [];
+    let restored = 0;
+    if (!files || typeof files !== 'object') return { restored, failed };
+
+    const dirByKey = new Map(BACKUP_FILE_DIRS.map(d => [d.key, d.dir]));
+    for (const [entry, encoded] of Object.entries(files as Record<string, unknown>)) {
+      if (typeof encoded !== 'string') { failed.push(entry); continue; }
+      const slash = entry.indexOf('/');
+      const key = slash === -1 ? '' : entry.slice(0, slash);
+      const name = slash === -1 ? '' : entry.slice(slash + 1);
+      const dir = dirByKey.get(key);
+      // A crafted backup must not be able to write outside these folders.
+      if (!dir || !name || name.includes('/') || name.includes('\\') || name.includes('..')) {
+        failed.push(entry);
+        continue;
+      }
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, name), Buffer.from(encoded, 'base64'));
+        restored += 1;
+      } catch (err) {
+        console.error(`[backup] cannot restore ${entry}:`, err);
+        failed.push(entry);
+      }
+    }
+    return { restored, failed };
+  }
+
   // Helper to generate full master backup payload
   function generateBackupPayload(generatedBy: string = 'Admin-Manual'): MasterBackupPayload {
     const totalWalletBalances = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
@@ -3943,6 +4035,10 @@ async function startServer() {
       backupSchedule: omitBackupBotToken(JSON.parse(JSON.stringify(backupSchedule)))
     };
 
+    // Attachments travel with the records. Without them a restore on another
+    // server rebuilds the database but every picture 404s.
+    const attachments = collectBackupFiles();
+
     const payloadString = JSON.stringify(rawData);
     const checksum = crypto.createHash('sha256').update(payloadString).digest('hex');
 
@@ -3958,9 +4054,13 @@ async function startServer() {
         totalEntities,
         totalWalletBalances,
         storeName: storeName(),
-        storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳'
+        storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳',
+        filesCount: attachments.stats.count,
+        filesBytes: attachments.stats.bytes,
+        filesSkipped: attachments.stats.skipped
       },
-      data: rawData
+      data: rawData,
+      files: attachments.files
     };
   }
 
@@ -4271,6 +4371,11 @@ async function startServer() {
         }
       }
 
+      // Put the picture files back before reporting success, so the records
+      // and the images they point at land together.
+      const fileOutcome = restoreBackupFiles(payload.files);
+      const backupHadFiles = Boolean(payload.files && Object.keys(payload.files).length > 0);
+
       const totalWalletBalance = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
 
       // Persist a completed restore immediately so Railway redeploys cannot
@@ -4281,12 +4386,32 @@ async function startServer() {
       // Notify System Backups Telegram topic
       sendToTelegramTopic(
         'system_backups',
-        `🛡️ <b>عملیات بازیابی و ریستور موفقیت‌آمیز دیتابیس:</b>\n\n✅ دیتابیس با موفقیت بازگردانی شد.\n👥 تعداد مشتریان: <b>${customers.length} نفر</b>\n💰 <b>مجموع موجودی کیف‌پول‌ها:</b> <b>${totalWalletBalance.toLocaleString('fa-IR')} تومان</b> (تضمین عدم کسر موجودی)\n📦 سفارشات عادی: <b>${orders.length} عدد</b>\n🎂 سفارشات دلخواه: <b>${customOrders.length} عدد</b>\n🧾 فاکتورهای دستی: <b>${invoices.length} عدد</b>\n🧁 محصولات: <b>${products.length} قلم</b>`
+        `🛡️ <b>عملیات بازیابی و ریستور دیتابیس:</b>\n\n✅ دیتابیس بازگردانی شد.\n🖼 فایل‌های تصویر: <b>${fileOutcome.restored}</b>${fileOutcome.failed.length ? ` (ناموفق: ${fileOutcome.failed.length})` : ''}${backupHadFiles ? '' : ' — این بکاپ تصاویر را همراه نداشت'}\n👥 تعداد مشتریان: <b>${customers.length} نفر</b>\n💰 <b>مجموع موجودی کیف‌پول‌ها:</b> <b>${totalWalletBalance.toLocaleString('fa-IR')} تومان</b> (تضمین عدم کسر موجودی)\n📦 سفارشات عادی: <b>${orders.length} عدد</b>\n🎂 سفارشات دلخواه: <b>${customOrders.length} عدد</b>\n🧾 فاکتورهای دستی: <b>${invoices.length} عدد</b>\n🧁 محصولات: <b>${products.length} قلم</b>`
       );
+
+      // Never claim a flawless restore without checking. A backup taken before
+      // attachments were included, or one whose files failed to write, leaves
+      // pictures broken — say so instead of reporting success.
+      const messageParts = ['اطلاعات بازیابی شد.'];
+      if (fileOutcome.restored > 0) {
+        messageParts.push(`${fileOutcome.restored} فایل تصویر هم بازگردانده شد.`);
+      }
+      if (fileOutcome.failed.length > 0) {
+        messageParts.push(`⚠️ ${fileOutcome.failed.length} فایل تصویر بازگردانده نشد.`);
+      }
+      if (!backupHadFiles) {
+        messageParts.push(
+          '⚠️ این فایل بکاپ تصاویر را همراه ندارد (با نسخهٔ قدیمی گرفته شده)؛'
+          + ' عکس‌های آپلودی نمایش داده نمی‌شوند مگر پوشهٔ product-images را دستی کپی کنید.',
+        );
+      }
 
       res.json({
         success: true,
-        message: 'اطلاعات با موفقیت کامل و بدون هیچ نقصی بازیابی شد.',
+        filesRestored: fileOutcome.restored,
+        filesFailed: fileOutcome.failed.length,
+        backupHadFiles,
+        message: messageParts.join(' '),
         stats: {
           productsCount: products.length,
           ordersCount: orders.length,
@@ -7300,6 +7425,21 @@ async function startServer() {
       }
     }
   }
+
+  // An oversized request otherwise returns body-parser's bare English HTML
+  // page, which tells the shop owner nothing about what to do next.
+  app.use((err: any, _req: Request, res: Response, next: any) => {
+    if (err?.type === 'entity.too.large' || err?.status === 413) {
+      res.status(413).json({
+        success: false,
+        message: 'حجم فایل ارسالی بیش از حد مجاز است. '
+          + 'اگر در حال بازیابی بکاپ هستید، فایل بسیار بزرگ است؛ '
+          + 'تعداد نسخه‌های نگهداری‌شده را کم کنید یا با پشتیبانی تماس بگیرید.',
+      });
+      return;
+    }
+    next(err);
+  });
 
   // --- Vite Middleware ---
   // A built bundle next to a non-production NODE_ENV means the deployment ran

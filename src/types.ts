@@ -549,7 +549,18 @@ export interface MasterBackupPayload {
     totalWalletBalances: number;
     storeName: string;
     storePhone: string;
+    /** How many attachment files travel inside this backup. */
+    filesCount?: number;
+    filesBytes?: number;
+    /** Attachments left out because the size budget was reached. */
+    filesSkipped?: string[];
   };
+  /**
+   * Stored attachments, keyed as "<folder>/<filename>" and base64 encoded.
+   * Product pictures exist nowhere else, so a backup without these cannot
+   * rebuild the shop on another server.
+   */
+  files?: Record<string, string>;
   data: {
     products: Product[];
     orders: Order[];

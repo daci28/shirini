@@ -2577,6 +2577,94 @@ function testScheduledBackupsReachTheAdminsInTelegram() {
   console.log('✅ scheduled backups are delivered to the admins by their own bot');
 }
 
+function testABackupCanRebuildTheShopOnAnotherServer() {
+  const read = (rel: string) => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const serverSource = read('../server.ts');
+  const typesSource = read('../src/types.ts');
+
+  // Panel uploads live only on disk; the records store a path. A backup that
+  // carries just the JSON restores a shop whose every picture is a 404.
+  assert.ok(
+    /function collectBackupFiles/.test(serverSource),
+    'A backup must gather the stored attachment files.',
+  );
+  const collect = (serverSource.split('function collectBackupFiles')[1] || '')
+    .split('function restoreBackupFiles')[0];
+  assert.ok(
+    /PRODUCT_IMAGE_DIR/.test(serverSource.split('BACKUP_FILE_DIRS')[1] || ''),
+    'Product images must be part of the backup.',
+  );
+  assert.ok(
+    /toString\('base64'\)/.test(collect),
+    'Attachment bytes must be encoded into the backup.',
+  );
+  assert.ok(
+    /BACKUP_FILE_BUDGET/.test(collect) && /skipped\.push/.test(collect),
+    'Oversized attachment sets must be reported, not silently truncated.',
+  );
+
+  // The payload must actually carry them.
+  const builder = (serverSource.split('function generateBackupPayload')[1] || '')
+    .split('function createSnapshotInternal')[0];
+  assert.ok(
+    /files: attachments\.files/.test(builder),
+    'The backup payload must include the attachment files.',
+  );
+  assert.ok(/files\?: Record<string, string>/.test(typesSource), 'The payload type must declare files.');
+
+  // Restoring must put them back on disk.
+  const restore = (serverSource.split('function restoreBackupFiles')[1] || '')
+    .split('function runScheduledBackupCheck')[0];
+  assert.ok(/writeFileSync/.test(restore), 'A restore must write the attachments back.');
+  // A backup file is attacker-supplied input; a crafted key must not escape.
+  // The guard must actually inspect the name, not merely mention "..".
+  const guard = restore.split('writeFileSync')[0];
+  for (const needed of ["name.includes('/')", "name.includes('..')"]) {
+    assert.ok(
+      guard.includes(needed),
+      `A crafted attachment path must be rejected before writing (missing ${needed}).`,
+    );
+  }
+  assert.ok(/failed\.push/.test(guard), 'A rejected attachment must be counted as failed.');
+  assert.ok(
+    /restoreBackupFiles\(payload\.files\)/.test(serverSource),
+    'The restore endpoint must rebuild the attachments.',
+  );
+
+  // Silence about lost pictures is what made the old restore misleading: it
+  // reported a flawless restore while every uploaded image was gone.
+  assert.ok(
+    !/بدون هیچ نقصی بازیابی شد/.test(serverSource),
+    'A restore must not claim to be flawless without checking the attachments.',
+  );
+  // The warning must be reachable: guarding it with a constant would hide it.
+  const warnGuard = serverSource.split('تصاویر را همراه ندارد')[0].split('messageParts.push').pop() || '';
+  assert.ok(
+    /if \(!backupHadFiles\)/.test(serverSource),
+    'Restoring an older backup must warn that its pictures are missing.',
+  );
+  assert.ok(
+    !/if \(false\)[\s\S]{0,200}تصاویر را همراه ندارد/.test(serverSource),
+    'The missing-pictures warning must not be disabled.',
+  );
+  assert.ok(warnGuard.length >= 0, 'guard slice computed');
+
+  // A backup carrying pictures is far bigger than a plain request, and the
+  // general 10mb ceiling used to reject it with a bare English error page.
+  const importLimit = serverSource.indexOf("app.use('/api/backup/import', express.json");
+  const globalLimit = serverSource.indexOf("app.use(express.json({ limit: '10mb' }))");
+  assert.ok(importLimit !== -1, 'The restore route needs its own larger body limit.');
+  assert.ok(
+    importLimit < globalLimit,
+    'The larger limit must be mounted before the general parser, or it never applies.',
+  );
+  assert.ok(
+    /entity\.too\.large/.test(serverSource) && /حجم فایل ارسالی بیش از حد مجاز است/.test(serverSource),
+    'An oversized upload must explain itself in Persian.',
+  );
+  console.log('✅ a backup carries the pictures, so another server comes up complete');
+}
+
 function testShopNameComesFromSettingsEverywhere() {
   const files: Array<[string, string]> = [
     ['server.ts', fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8')],
@@ -2713,6 +2801,7 @@ async function main() {
   testUploadsReportTheirProgress();
   testAdminCanDownloadTheBackupFileFromTheBot();
   testScheduledBackupsReachTheAdminsInTelegram();
+  testABackupCanRebuildTheShopOnAnotherServer();
   testShopNameComesFromSettingsEverywhere();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();

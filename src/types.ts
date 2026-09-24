@@ -572,6 +572,10 @@ export interface MasterBackupPayload {
     discounts: DiscountCode[];
     /** History of messages broadcast to customers, including their pictures. */
     broadcasts?: BroadcastRecord[];
+    /** Shopping carts customers have filled but not yet checked out. */
+    userCarts?: Record<string, unknown>;
+    /** Half-finished bot conversations, including drafted orders. */
+    userStates?: Record<string, unknown>;
     supportTickets: SupportTicket[];
     botSettings: BotSettings;
     backupSchedule?: BackupScheduleConfig;

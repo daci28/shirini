@@ -2705,6 +2705,32 @@ function testABackupCanRebuildTheShopOnAnotherServer() {
     'A restore must bring the broadcast history back.',
   );
 
+  // A customer can be mid-checkout when the shop moves. Their filled cart and
+  // drafted order live in separate maps that the backup used to ignore.
+  for (const [field, label] of [['userCarts', 'carts'], ['userStates', 'conversations']] as const) {
+    assert.ok(
+      new RegExp(`${field}: ${field}\\.toObject\\(\\)`).test(builder),
+      `Customer ${label} must be part of the backup.`,
+    );
+    assert.ok(
+      new RegExp(`${field}\\.replaceAll\\(`).test(serverSource),
+      `A restore must bring customer ${label} back.`,
+    );
+  }
+
+  // Everything the server persists must travel, except the restore points
+  // themselves — carrying those would nest backups inside backups.
+  const persisted = (serverSource.split('function saveAllData')[1] || '').split('}')[0];
+  const collections = [...persisted.matchAll(/^\s{4}(\w+),?$/gm)].map((m) => m[1]);
+  assert.ok(collections.length >= 10, `Expected the persisted list; found ${collections.length}.`);
+  for (const name of collections) {
+    if (name === 'backupSnapshots') continue;
+    assert.ok(
+      new RegExp(`${name}:`).test(builder),
+      `"${name}" is persisted but never reaches the backup.`,
+    );
+  }
+
   // Silence about lost pictures is what made the old restore misleading: it
   // reported a flawless restore while every uploaded image was gone.
   assert.ok(

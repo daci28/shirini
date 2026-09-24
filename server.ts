@@ -846,7 +846,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-attach-on-export';
+const APP_REVISION = '2026-09-24-backup-carts-and-states';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -4083,6 +4083,11 @@ async function startServer() {
       // The broadcast history records what was sent to customers and which
       // picture went with it; leaving it out loses that trail on migration.
       broadcasts: JSON.parse(JSON.stringify(broadcasts)),
+      // A customer may be mid-checkout when the shop moves servers. Without
+      // these, their filled cart and drafted order silently disappear and the
+      // bot forgets where the conversation was.
+      userCarts: userCarts.toObject(),
+      userStates: userStates.toObject(),
       botSettings: JSON.parse(JSON.stringify(omitPanelPassword(botSettings))),
       backupSchedule: omitBackupBotToken(JSON.parse(JSON.stringify(backupSchedule)))
     };
@@ -4375,6 +4380,12 @@ async function startServer() {
         }
         if (Array.isArray(importedData.broadcasts)) {
           broadcasts = [...importedData.broadcasts];
+        }
+        if (importedData.userCarts && typeof importedData.userCarts === 'object') {
+          userCarts.replaceAll(importedData.userCarts as Record<string, CartItem[]>);
+        }
+        if (importedData.userStates && typeof importedData.userStates === 'object') {
+          userStates.replaceAll(importedData.userStates as Record<string, any>);
         }
         if (importedData.botSettings && typeof importedData.botSettings === 'object') {
           botSettings = { ...botSettings, ...omitSettingsSecrets(importedData.botSettings) };

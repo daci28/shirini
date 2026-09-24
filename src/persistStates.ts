@@ -85,4 +85,18 @@ export class PersistentMap<V> {
   forEach(callbackfn: (value: V, key: string, map: Map<string, V>) => void): void {
     this.map.forEach(callbackfn);
   }
+
+  /** Plain snapshot of every entry, for including this map in a backup. */
+  toObject(): Record<string, V> {
+    return Object.fromEntries(this.map);
+  }
+
+  /** Replace every entry, used when a backup is restored. */
+  replaceAll(entries: Record<string, V>): void {
+    this.map.clear();
+    for (const [key, value] of Object.entries(entries || {})) {
+      this.map.set(key, value);
+    }
+    this.scheduleSave();
+  }
 }

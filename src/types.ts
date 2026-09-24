@@ -570,6 +570,8 @@ export interface MasterBackupPayload {
     customers: CustomerUser[];
     walletTransactions: WalletTransaction[];
     discounts: DiscountCode[];
+    /** History of messages broadcast to customers, including their pictures. */
+    broadcasts?: BroadcastRecord[];
     supportTickets: SupportTicket[];
     botSettings: BotSettings;
     backupSchedule?: BackupScheduleConfig;

@@ -2650,6 +2650,17 @@ function testABackupCanRebuildTheShopOnAnotherServer() {
     'The restore endpoint must rebuild the attachments.',
   );
 
+  // Broadcast history records what was sent to customers and which picture
+  // went with it. It lived only in data.json and never travelled.
+  assert.ok(
+    /broadcasts: JSON\.parse\(JSON\.stringify\(broadcasts\)\)/.test(builder),
+    'The broadcast history must be part of the backup.',
+  );
+  assert.ok(
+    /Array\.isArray\(importedData\.broadcasts\)/.test(serverSource),
+    'A restore must bring the broadcast history back.',
+  );
+
   // Silence about lost pictures is what made the old restore misleading: it
   // reported a flawless restore while every uploaded image was gone.
   assert.ok(

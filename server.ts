@@ -838,7 +838,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-memory-safe';
+const APP_REVISION = '2026-09-24-backup-includes-broadcasts';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -4048,6 +4048,9 @@ async function startServer() {
       walletTransactions: JSON.parse(JSON.stringify(walletTransactions)),
       discounts: JSON.parse(JSON.stringify(discounts)),
       supportTickets: JSON.parse(JSON.stringify(supportTickets)),
+      // The broadcast history records what was sent to customers and which
+      // picture went with it; leaving it out loses that trail on migration.
+      broadcasts: JSON.parse(JSON.stringify(broadcasts)),
       botSettings: JSON.parse(JSON.stringify(omitPanelPassword(botSettings))),
       backupSchedule: omitBackupBotToken(JSON.parse(JSON.stringify(backupSchedule)))
     };
@@ -4335,6 +4338,9 @@ async function startServer() {
         if (Array.isArray(importedData.supportTickets)) {
           supportTickets = [...importedData.supportTickets];
         }
+        if (Array.isArray(importedData.broadcasts)) {
+          broadcasts = [...importedData.broadcasts];
+        }
         if (importedData.botSettings && typeof importedData.botSettings === 'object') {
           botSettings = { ...botSettings, ...omitSettingsSecrets(importedData.botSettings) };
         }
@@ -4389,6 +4395,12 @@ async function startServer() {
           const existingIds = new Set(supportTickets.map(t => t.id));
           importedData.supportTickets.forEach((t: SupportTicket) => {
             if (!existingIds.has(t.id)) supportTickets.push(t);
+          });
+        }
+        if (Array.isArray(importedData.broadcasts)) {
+          const existingIds = new Set(broadcasts.map(b => b.id));
+          importedData.broadcasts.forEach((b: BroadcastRecord) => {
+            if (!existingIds.has(b.id)) broadcasts.push(b);
           });
         }
       }

@@ -304,6 +304,14 @@ function omitBackupBotToken(schedule: BackupScheduleConfig): BackupScheduleConfi
 /** Older snapshots may contain secrets; redact them before they ever reach a client. */
 function redactBackupSnapshot(snapshot: BackupSnapshot): BackupSnapshot {
   const copied = JSON.parse(JSON.stringify(snapshot)) as BackupSnapshot;
+  // Snapshots written by an earlier build embedded every picture as base64.
+  // Retained ten deep and rewritten into data.json every few seconds, that
+  // grows the file into the hundreds of megabytes and eventually kills the
+  // process. Drop them: the pictures are still on this server's disk, and the
+  // copies that travel get them attached at export time.
+  if (copied.payload?.files) {
+    delete (copied.payload as { files?: unknown }).files;
+  }
   if (copied.payload?.data?.botSettings) {
     copied.payload.data.botSettings = omitPanelPassword(copied.payload.data.botSettings) as BotSettings;
   }
@@ -838,7 +846,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-backup-includes-broadcasts';
+const APP_REVISION = '2026-09-24-backup-attach-on-export';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -3948,13 +3956,14 @@ async function startServer() {
   /**
    * Total bytes of attachments a single backup may carry, before encoding.
    *
-   * Deliberately conservative: the bytes are held as base64 (about 1.37x),
-   * that string is embedded in the payload, and the payload is serialized
-   * again on the way out — so peak memory is several times this number. A
-   * 512MB container is killed outright (exit 137) long before the disk runs
-   * out, which loses the backup with no error at all.
+   * Deliberately conservative, for two reasons. The bytes are held as base64
+   * (about 1.37x), embedded in the payload and serialized again, so peak
+   * memory is several times this number and a 512MB container is killed
+   * outright (exit 137). And the finished file must still fit under the 50MB
+   * document limit Telegram enforces, or the backup bot cannot deliver it at
+   * all: 40MB of attachments already produced a 53MB file that was refused.
    */
-  const BACKUP_FILE_BUDGET = 40 * 1024 * 1024;
+  const BACKUP_FILE_BUDGET = 30 * 1024 * 1024;
 
   interface BackupFileSet {
     files: Record<string, string>;
@@ -4001,6 +4010,29 @@ async function startServer() {
       );
     }
     return { files, stats: { count: Object.keys(files).length, bytes, skipped } };
+  }
+
+  /**
+   * Add the stored pictures to a payload that is about to leave this server.
+   *
+   * Deliberately NOT part of generateBackupPayload: snapshots are retained in
+   * memory and written into data.json, so embedding tens of megabytes of
+   * base64 in each one multiplies by the retention count and kills the
+   * process. A restore point on this server does not need the bytes anyway —
+   * the files are still on its disk. Only the copy that travels does.
+   */
+  function withAttachments(payload: MasterBackupPayload): MasterBackupPayload {
+    const attachments = collectBackupFiles();
+    return {
+      ...payload,
+      metadata: {
+        ...payload.metadata,
+        filesCount: attachments.stats.count,
+        filesBytes: attachments.stats.bytes,
+        filesSkipped: attachments.stats.skipped,
+      },
+      files: attachments.files,
+    };
   }
 
   /** Write attachments from a backup back onto this server's disk. */
@@ -4055,10 +4087,6 @@ async function startServer() {
       backupSchedule: omitBackupBotToken(JSON.parse(JSON.stringify(backupSchedule)))
     };
 
-    // Attachments travel with the records. Without them a restore on another
-    // server rebuilds the database but every picture 404s.
-    const attachments = collectBackupFiles();
-
     const payloadString = JSON.stringify(rawData);
     const checksum = crypto.createHash('sha256').update(payloadString).digest('hex');
 
@@ -4074,13 +4102,9 @@ async function startServer() {
         totalEntities,
         totalWalletBalances,
         storeName: storeName(),
-        storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳',
-        filesCount: attachments.stats.count,
-        filesBytes: attachments.stats.bytes,
-        filesSkipped: attachments.stats.skipped
+        storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳'
       },
-      data: rawData,
-      files: attachments.files
+      data: rawData
     };
   }
 
@@ -4176,22 +4200,37 @@ async function startServer() {
     const admins = panelAdminChatIds();
     const result = { sent: 0, failed: 0, errors: [] as string[] };
 
+    /**
+     * Record the outcome. Every exit from this function must go through here:
+     * an early return that skipped it used to leave the previous run's "sent"
+     * in place, so a delivery that never happened still looked successful.
+     */
+    const record = () => {
+      backupSchedule.lastDeliveryAt = new Date().toISOString();
+      backupSchedule.lastDeliveryStatus = result.sent > 0 && result.failed === 0 ? 'sent' : 'failed';
+      backupSchedule.lastDeliveryError = result.errors.length ? result.errors.join(' | ') : undefined;
+      saveAllData();
+      return result;
+    };
+
     if (!token) {
       result.errors.push('توکن بات بکاپ ثبت نشده است.');
-      return result;
+      return record();
     }
     if (admins.length === 0) {
       result.errors.push('هیچ ادمینی در تنظیمات ثبت نشده است.');
-      return result;
+      return record();
     }
 
-    const serialized = JSON.stringify(snapshot.payload, null, 2);
+    // Attach the pictures only now, so the retained snapshot stays small.
+    const outgoing = withAttachments(snapshot.payload);
+    const serialized = JSON.stringify(outgoing, null, 2);
     const bytes = Buffer.byteLength(serialized, 'utf8');
     const TELEGRAM_DOCUMENT_LIMIT = 50 * 1024 * 1024;
     if (bytes > TELEGRAM_DOCUMENT_LIMIT) {
       result.failed = admins.length;
       result.errors.push(`حجم بکاپ (${(bytes / 1048576).toFixed(1)} مگابایت) از حد ۵۰ مگابایت تلگرام بیشتر است.`);
-      return result;
+      return record();
     }
 
     const caption = `💾 <b>پشتیبان خودکار ${escapeTelegramHtml(storeName())}</b>\n\n`
@@ -4201,9 +4240,9 @@ async function startServer() {
       + `🧁 محصولات: <b>${snapshot.stats.productsCount}</b>\n`
       + `📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>\n`
       + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n`
-      + `🖼 تصاویر همراه: <b>${snapshot.payload?.metadata?.filesCount ?? 0}</b>\n`
-      + ((snapshot.payload?.metadata?.filesSkipped?.length || 0) > 0
-        ? `\n⚠️ <b>${snapshot.payload.metadata.filesSkipped!.length} تصویر به دلیل حجم زیاد در این بکاپ نیست.</b>\n`
+      + `🖼 تصاویر همراه: <b>${outgoing.metadata.filesCount ?? 0}</b>\n`
+      + ((outgoing.metadata.filesSkipped?.length || 0) > 0
+        ? `\n⚠️ <b>${outgoing.metadata.filesSkipped!.length} تصویر به دلیل حجم زیاد در این بکاپ نیست.</b>\n`
           + `برای انتقال کامل، پوشهٔ product-images را هم دستی کپی کنید.\n`
         : '')
       + `\n🔐 این فایل شامل رمز پنل و توکن بات نیست.`;
@@ -4235,11 +4274,7 @@ async function startServer() {
       }
     }
 
-    backupSchedule.lastDeliveryAt = new Date().toISOString();
-    backupSchedule.lastDeliveryStatus = result.sent > 0 && result.failed === 0 ? 'sent' : 'failed';
-    backupSchedule.lastDeliveryError = result.errors.length ? result.errors.join(' | ') : undefined;
-    saveAllData();
-    return result;
+    return record();
   }
 
   function runScheduledBackupCheck() {
@@ -4286,7 +4321,7 @@ async function startServer() {
   // 1. Export Master Backup (Download JSON)
   app.get('/api/backup/export', (req: Request, res: Response) => {
     try {
-      const payload = generateBackupPayload('Admin-Export-Download');
+      const payload = withAttachments(generateBackupPayload('Admin-Export-Download'));
       const filename = `shirinkam-master-backup-${new Date().toISOString().slice(0, 10)}.json`;
 
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -6225,7 +6260,9 @@ async function startServer() {
             return;
           }
 
-          const serialized = JSON.stringify(snapshot.payload, null, 2);
+          // Same reasoning as the scheduled delivery: attach at send time.
+          const outgoing = withAttachments(snapshot.payload);
+          const serialized = JSON.stringify(outgoing, null, 2);
           const bytes = Buffer.byteLength(serialized, 'utf8');
           // Telegram refuses documents larger than 50MB; say so plainly
           // instead of letting the upload fail with no explanation.
@@ -6257,8 +6294,12 @@ async function startServer() {
               + `🧁 محصولات: <b>${snapshot.stats.productsCount}</b>\n`
               + `📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>\n`
               + `🎂 سفارشی: <b>${snapshot.stats.customOrdersCount}</b>\n`
-              + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n\n`
-              + `🔐 این فایل شامل رمز پنل و توکن بات نیست.`,
+              + `👥 مشتریان: <b>${snapshot.stats.customersCount}</b>\n`
+              + `🖼 تصاویر همراه: <b>${outgoing.metadata.filesCount ?? 0}</b>\n`
+              + ((outgoing.metadata.filesSkipped?.length || 0) > 0
+                ? `\n⚠️ <b>${outgoing.metadata.filesSkipped!.length} تصویر به دلیل حجم زیاد در این بکاپ نیست.</b>\n`
+                : '')
+              + `\n🔐 این فایل شامل رمز پنل و توکن بات نیست.`,
           );
           form.append('reply_markup', JSON.stringify({ inline_keyboard: backupMenu }));
           form.append(

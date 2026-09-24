@@ -2510,6 +2510,23 @@ function testScheduledBackupsReachTheAdminsInTelegram() {
 
   // Telegram refuses a chat that never started the bot. That failure must be
   // recorded, not swallowed, or the backups go quiet for hours unnoticed.
+  // Early returns used to skip the bookkeeping, leaving the previous run's
+  // "sent" in place, so a delivery that never happened still looked fine.
+  assert.ok(
+    /const record = \(\) =>/.test(deliver),
+    'Delivery bookkeeping must live in one place every exit goes through.',
+  );
+  // Ignore the one inside the recorder itself; count only exits beside it.
+  const afterRecorder = deliver.split('return result;\n    };').slice(1).join('') || '';
+  const bareReturns = (afterRecorder.match(/\n\s*return result;/g) || []).length;
+  assert.ok(
+    bareReturns === 0,
+    `Every exit must record the outcome; found ${bareReturns} that skip it.`,
+  );
+  assert.ok(
+    (afterRecorder.match(/return record\(\);/g) || []).length >= 3,
+    'The early exits must all record the outcome.',
+  );
   assert.ok(
     /lastDeliveryStatus/.test(deliver) && /lastDeliveryError/.test(deliver),
     'Every delivery outcome must be recorded on the schedule.',
@@ -2608,7 +2625,10 @@ function testABackupCanRebuildTheShopOnAnotherServer() {
   const budget = Number(
     (serverSource.match(/BACKUP_FILE_BUDGET = (\d+) \* 1024 \* 1024/) || [])[1] || 0,
   );
-  assert.ok(budget > 0 && budget <= 64, `The attachment budget must stay small; found ${budget}MB.`);
+  // Base64 inflates by ~1.37x, and the finished file must still fit under the
+  // 50MB document limit Telegram enforces or the backup bot cannot send it.
+  assert.ok(budget > 0 && budget <= 32, `The attachment budget must stay small; found ${budget}MB.`);
+  assert.ok(budget * 1.37 < 50, `${budget}MB of attachments exceeds Telegram's 50MB limit once encoded.`);
   assert.ok(
     /if \(skipped\.length > 0\) \{[\s\S]{0,400}console\.warn/.test(collect),
     'Dropping attachments must be visible in the log, not silent.',
@@ -2622,12 +2642,36 @@ function testABackupCanRebuildTheShopOnAnotherServer() {
     'Product images must be collected before the refetchable cache.',
   );
 
-  // The payload must actually carry them.
+  // Attachments are added on the way out, never baked into the retained
+  // snapshot: snapshots are kept ten deep and rewritten into data.json, so
+  // embedding tens of megabytes in each one grew the file past 100MB and the
+  // process was killed. Only the copy that leaves carries the bytes.
   const builder = (serverSource.split('function generateBackupPayload')[1] || '')
     .split('function createSnapshotInternal')[0];
   assert.ok(
-    /files: attachments\.files/.test(builder),
-    'The backup payload must include the attachment files.',
+    !/files:/.test(builder),
+    'The retained snapshot payload must not embed the attachment bytes.',
+  );
+  assert.ok(
+    /function withAttachments/.test(serverSource),
+    'There must be a step that attaches files to an outgoing backup.',
+  );
+  // Every path that hands a backup to someone must attach them.
+  for (const [marker, label] of [
+    ["generateBackupPayload('Admin-Export-Download')", 'panel download'],
+    ['const outgoing = withAttachments(snapshot.payload)', 'telegram delivery'],
+  ] as const) {
+    assert.ok(serverSource.includes(marker), `The ${label} must ship the pictures.`);
+  }
+  assert.ok(
+    (serverSource.match(/withAttachments\(/g) || []).length >= 4,
+    'Panel download, scheduled delivery and the in-bot button must all attach files.',
+  );
+  // Snapshots written by the earlier build still hold those bytes on disk.
+  const redact = (serverSource.split('function redactBackupSnapshot')[1] || '').split('\n}')[0];
+  assert.ok(
+    /if \(copied\.payload\?\.files\) \{[\s\S]{0,200}delete \(copied\.payload as \{ files\?: unknown \}\)\.files/.test(redact),
+    'Legacy snapshots must have their embedded attachments stripped on load.',
   );
   assert.ok(/files\?: Record<string, string>/.test(typesSource), 'The payload type must declare files.');
 

@@ -5642,12 +5642,12 @@ async function startServer() {
     if (prod.productCode) {
       cap += `🏷️ <b>کد محصول:</b> <code>${escapeTelegramHtml(prod.productCode)}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit && prod.unit !== 'کیلوگرم' ? ` / ${escapeTelegramHtml(prod.unit)}` : ''}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} عدد</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${escapeTelegramHtml(prod.unit && prod.unit !== 'کیلوگرم' ? prod.unit : 'عدد')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
     }
 
     if (prod.description) {

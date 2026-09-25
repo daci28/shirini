@@ -274,12 +274,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (prod.productCode) {
       cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit && prod.unit !== 'کیلوگرم' ? ` / ${prod.unit}` : ''}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} عدد</b> (جمع: <b>${formatPrice(lineTotal)}</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${prod.unit && prod.unit !== 'کیلوگرم' ? prod.unit : 'عدد'}</b> (جمع: <b>${formatPrice(lineTotal)}</b>)\n`;
     }
 
     if (prod.description) {

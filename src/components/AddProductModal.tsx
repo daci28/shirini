@@ -266,9 +266,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
               >
                 <option value="عدد">عدد</option>
-                <option value="بسته">بسته</option>
-                <option value="جعبه">جعبه</option>
+                <option value="جعبه ۱۲ تایی">جعبه ۱۲ تایی</option>
+                <option value="جعبه نیم‌کیلویی">جعبه نیم‌کیلویی</option>
                 <option value="دیس">دیس</option>
+                <option value="بسته">بسته</option>
                 <option value="اسلایس">اسلایس</option>
               </select>
             </div>

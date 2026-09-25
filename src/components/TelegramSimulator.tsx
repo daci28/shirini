@@ -274,12 +274,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (prod.productCode) {
       cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit && prod.unit !== 'کیلوگرم' ? ` / ${prod.unit}` : ''}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit ? ` / هر ${prod.unit}` : ''}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${prod.unit && prod.unit !== 'کیلوگرم' ? prod.unit : 'عدد'}</b> (جمع: <b>${formatPrice(lineTotal)}</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${prod.unit || 'عدد'}</b> (جمع: <b>${formatPrice(lineTotal)}</b>)\n`;
     }
 
     if (prod.description) {
@@ -301,8 +301,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       ]);
     } else {
       buttons.push([
-        { text: '➕ 1 خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
-        { text: '➕ 5 خرید', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
+        { text: '➕ افزودن به سبد خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
         { text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' },

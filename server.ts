@@ -5642,12 +5642,12 @@ async function startServer() {
     if (prod.productCode) {
       cap += `🏷️ <b>کد محصول:</b> <code>${escapeTelegramHtml(prod.productCode)}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit && prod.unit !== 'کیلوگرم' ? ` / ${escapeTelegramHtml(prod.unit)}` : ''}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit ? ` / هر ${escapeTelegramHtml(prod.unit)}` : ''}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${escapeTelegramHtml(prod.unit && prod.unit !== 'کیلوگرم' ? prod.unit : 'عدد')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${escapeTelegramHtml(prod.unit || 'عدد')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
     }
 
     if (prod.description) {
@@ -5669,8 +5669,7 @@ async function startServer() {
       ]);
     } else {
       buttons.push([
-        { text: '➕ 1 خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
-        { text: '➕ 5 خرید', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
+        { text: '➕ افزودن به سبد خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
         { text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' },

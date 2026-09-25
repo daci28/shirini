@@ -21,6 +21,7 @@ interface TelegramUserProfile {
 interface TelegramContext {
   token: string;
   chatId: string;
+  messageId?: number;
   products: any[];
   orders: any[];
   discounts: any[];
@@ -204,6 +205,33 @@ async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], pho
       } catch (err) {
         console.error('Error sending photo:', err);
       }
+    }
+  }
+
+  // In-place message edit attempt for interactive glass button navigation
+  if (ctx.messageId && !photo) {
+    try {
+      const editPayload: any = {
+        chat_id: ctx.chatId,
+        message_id: ctx.messageId,
+        parse_mode: 'HTML',
+        text,
+      };
+      if (buttons && buttons.length > 0) {
+        editPayload.reply_markup = { inline_keyboard: buttons };
+      }
+      const response = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editPayload)
+      });
+      const resData = (await response.json().catch(() => ({}))) as any;
+      if (resData?.ok) return;
+      if (typeof resData?.description === 'string' && resData.description.includes('message is not modified')) {
+        return;
+      }
+    } catch {
+      // Fallback to sending a new message below
     }
   }
 

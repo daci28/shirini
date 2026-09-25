@@ -5618,7 +5618,7 @@ async function startServer() {
 
   // Used both for /start and for every "back to main menu" button, so the
   // customer always sees the same main menu (no stray cake photo / store name).
-  async function sendBotMainMenu(token: string, chatId: string, from: any) {
+  async function sendBotMainMenu(token: string, chatId: string, from: any, messageId?: number) {
     const storeName = botSettings.storeName || 'فروشگاه آنلاین';
     const welcomeMsg = tmsg('welcomeMessage', { storeName });
     const inlineKeyboard: any[][] = [
@@ -5634,16 +5634,7 @@ async function startServer() {
     if (isTelegramAdmin(String(from?.id ?? chatId))) {
       inlineKeyboard.push([{ text: '👨‍🍳 پنل مدیریت', callback_data: 'admin_panel', style: 'primary' }]);
     }
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: welcomeMsg,
-        parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: inlineKeyboard },
-      }),
-    });
+    await sendOrEditBotMessage(token, chatId, messageId, welcomeMsg, inlineKeyboard);
   }
 
   async function handleTelegramLiveUpdate(token: string, update: any) {
@@ -6812,7 +6803,7 @@ async function startServer() {
       }
 
       // Build context for handlers
-      const tgCtx = { token, chatId, products, orders, discounts, customers, supportTickets, customOrders, invoices, botSettings, userCarts, userStates, telegramUser: cb.from };
+      const tgCtx = { token, chatId, messageId, products, orders, discounts, customers, supportTickets, customOrders, invoices, botSettings, userCarts, userStates, telegramUser: cb.from };
 
       // Try telegramHandlers first
       if (data.startsWith('admin_cat_')) {
@@ -7038,79 +7029,61 @@ async function startServer() {
         text += `\n📦 <b>تعداد سفارش‌ها:</b> ${(customer.totalOrdersCount || 0).toLocaleString('fa-IR')}\n`;
         text += `\n⚠️ اگر نام، شماره تلفن یا آدرس‌ها اشتباه است، برای اصلاح به <b>پشتیبانی</b> پیام بدهید.`;
 
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '➕ افزودن آدرس جدید', callback_data: 'profile_add_address', style: 'primary' }],
-                [{ text: '💬 پشتیبانی', callback_data: 'support_send', style: 'primary' }],
-                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
-              ]
-            }
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          text,
+          [
+            [{ text: '➕ افزودن آدرس جدید', callback_data: 'profile_add_address', style: 'primary' }],
+            [{ text: '💬 پشتیبانی', callback_data: 'support_send', style: 'primary' }],
+            [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
+          ]
+        );
       } else if (data === 'profile_add_address') {
         userStates.set(chatId, { mode: 'profile_add_address' });
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `🏠 لطفاً <b>آدرس جدید</b> خود را کامل بنویسید (خیابان، کوچه، پلاک و کد پستی در صورت امکان):`,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] }
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          `🏠 لطفاً <b>آدرس جدید</b> خود را کامل بنویسید (خیابان، کوچه، پلاک و کد پستی در صورت امکان):`,
+          [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]]
+        );
       } else if (data === 'contact_info') {
         const text = `📍 <b>اطلاعات ${storeName()}:</b>\n\n🏢 <b>نام:</b> ${botSettings.storeName}\n📞 <b>تلفن تماس:</b> ${botSettings.storePhone}\n🏠 <b>آدرس:</b> ${botSettings.storeAddress}\n💳 <b>شماره کارت:</b> <code>${botSettings.cardNumber}</code>\n👤 <b>به نام:</b> ${botSettings.cardHolder}`;
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [[{ text: '🔙 بازگشت', callback_data: 'back_to_main', style: 'danger' }]]
-            }
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          text,
+          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main', style: 'danger' }]]
+        );
       // Custom Product Flow
       } else if (data === 'custom_product_start') {
         userStates.set(chatId, { mode: 'custom_product_category' });
         const categories = ['🎂 کیک تولد و مناسبتی', '🧁 کاپ‌کیک و مافین', '🍰 شیرینی تر', '🍪 شیرینی خشک', '🍮 دسر و پودینگ', '🥐 نان و کروسان', '🍫 شکلات و ترافل', '🎁 سایر'];
         const buttons = categories.map(cat => [{ text: cat, callback_data: `custom_cat_${cat}`, style: 'primary' }]);
         buttons.push([{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]);
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: '🎨 <b>محصول سفارشی شما</b>\n\nلطفاً دسته‌بندی محصول سفارشی خود را انتخاب کنید:',
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: buttons }
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          '🎨 <b>محصول سفارشی شما</b>\n\nلطفاً دسته‌بندی محصول سفارشی خود را انتخاب کنید:',
+          buttons
+        );
       } else if (data.startsWith('custom_cat_')) {
         const category = data.replace('custom_cat_', '');
         const state = userStates.get(chatId) || {};
         state.category = category;
         state.mode = 'custom_product_description';
         userStates.set(chatId, state);
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `✅ دسته‌بندی: <b>${category}</b>\n\n📝 حالا لطفاً <b>توضیحات کامل</b> محصول سفارشی خود را بنویسید:\n\n<i>(مثال: کیک شکلاتی ۳ کیلویی دو طبقه، تزیین با فوندانت آبی و عروسک، بدون گلوتن)</i>`,
-            parse_mode: 'HTML'
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          `✅ دسته‌بندی: <b>${category}</b>\n\n📝 حالا لطفاً <b>توضیحات کامل</b> محصول سفارشی خود را بنویسید:\n\n<i>(مثال: کیک شکلاتی ۳ کیلویی دو طبقه، تزیین با فوندانت آبی و عروسک، بدون گلوتن)</i>`,
+          [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]]
+        );
       } else if (data === 'custom_product_skip_photo') {
         const state = userStates.get(chatId) || {};
         // Skipping from the very first photo prompt means "no images"; once at
@@ -7135,38 +7108,32 @@ async function startServer() {
           `🎯 ویژگی‌ها: ${state.features}\n` +
           `📸 تصاویر نمونه: ${photosCount > 0 ? `✅ ${photosCount.toLocaleString('fa-IR')} عکس ارسال شده` : '❌ ارسال نشده'}\n\n` +
           `آیا اطلاعات صحیح است؟`;
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: confirmText,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [
-              [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit', style: 'success' }],
-              [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
-            ]}
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          confirmText,
+          [
+            [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit', style: 'success' }],
+            [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
+          ]
+        );
       } else if (data === 'custom_product_done_photos') {
         const state = userStates.get(chatId);
         const collected: string[] = Array.isArray(state?.photos)
           ? state.photos
           : (state?.photo ? [state.photo] : []);
         if (!state || collected.length === 0) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: '📸 هنوز عکسی دریافت نشده است. لطفاً تصویر نمونه را بفرستید یا دکمه «بدون عکس ادامه بده» را بزنید.',
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [
-                [{ text: '⏭️ بدون عکس ادامه بده', callback_data: 'custom_product_skip_photo', style: 'primary' }],
-                [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
-              ]}
-            })
-          });
+          await sendOrEditBotMessage(
+            token,
+            chatId,
+            messageId,
+            '📸 هنوز عکسی دریافت نشده است. لطفاً تصویر نمونه را بفرستید یا دکمه «بدون عکس ادامه بده» را بزنید.',
+            [
+              [{ text: '⏭️ بدون عکس ادامه بده', callback_data: 'custom_product_skip_photo', style: 'primary' }],
+              [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
+            ]
+          );
           return;
         }
         state.photos = collected.slice(0, 10);
@@ -7179,31 +7146,26 @@ async function startServer() {
           `🎯 ویژگی‌ها: ${state.features}\n` +
           `📸 تصاویر نمونه: ✅ ${state.photos.length.toLocaleString('fa-IR')} عکس ارسال شده\n\n` +
           `آیا اطلاعات صحیح است؟`;
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: confirmText,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [
-              [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit', style: 'success' }],
-              [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
-            ]}
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          confirmText,
+          [
+            [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit', style: 'success' }],
+            [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
+          ]
+        );
       } else if (data === 'custom_product_submit') {
         const state = userStates.get(chatId);
         if (!state) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: '❌ خطا: اطلاعات سفارش یافت نشد. لطفاً دوباره تلاش کنید.',
-              parse_mode: 'HTML'
-            })
-          });
+          await sendOrEditBotMessage(
+            token,
+            chatId,
+            messageId,
+            '❌ خطا: اطلاعات سفارش یافت نشد. لطفاً دوباره تلاش کنید.',
+            [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]]
+          );
           return;
         }
         // Save the design inquiry. Delivery details are deliberately left empty
@@ -7490,26 +7452,21 @@ async function startServer() {
         // Cancel any in-progress checkout/custom-registration state before
         // returning to the menu, then show the exact same main menu as /start.
         userStates.delete(chatId);
-        await sendBotMainMenu(token, chatId, cb.from);
+        await sendBotMainMenu(token, chatId, cb.from, messageId);
       } else if (data === 'admin_web_info') {
         const webUrl = botSettings.webAdminUrl || 'https://shirinkam-admin.iran.run';
         const user = botSettings.webAdminUsername || 'admin';
         const text = `🌐 <b>مشخصات پنل مدیریت تحت وب:</b>\n\n🔗 <b>آدرس وب:</b>\n<code>${webUrl}</code>\n\n👤 <b>نام کاربری:</b> <code>${user}</code>\n🔑 <b>رمز عبور:</b> برای حفظ امنیت نمایش داده نمی‌شود.\n\n<i>برای تغییر نام کاربری یا رمز عبور از تنظیمات امن پنل وب استفاده کنید.</i>`;
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🌐 ورود به پنل وب', url: webUrl }],
-                [{ text: '🔙 بازگشت به پنل ادمین', callback_data: 'admin_panel', style: 'danger' }]
-              ]
-            }
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          text,
+          [
+            [{ text: '🌐 ورود به پنل وب', url: webUrl }],
+            [{ text: '🔙 بازگشت به پنل ادمین', callback_data: 'admin_panel', style: 'danger' }]
+          ]
+        );
       } else if (data === 'menu_categories') {
         // Build the category list from the ACTUAL catalogue so every button
         // leads to products. Each button shows how many in-stock items that
@@ -7539,31 +7496,25 @@ async function startServer() {
         categoryButtons.push([
           { text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }
         ]);
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: '🧁 <b>لطفاً دسته‌بندی مورد نظر خود را انتخاب نمایید:</b>\n\n<i>عدد داخل پرانتز = تعداد کالای موجود در هر دسته</i>',
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: categoryButtons }
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          '🧁 <b>لطفاً دسته‌بندی مورد نظر خود را انتخاب نمایید:</b>\n\n<i>عدد داخل پرانتز = تعداد کالای موجود در هر دسته</i>',
+          categoryButtons
+        );
       } else if (data.startsWith('cat_')) {
         const selectedCategory = data.replace('cat_', '');
         const inStockProducts = products.filter(p => p && p.isAvailable);
         const filteredProducts = selectedCategory === 'all' ? inStockProducts : inStockProducts.filter(p => p.category === selectedCategory);
         if (filteredProducts.length === 0) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: `در دسته‌بندی <b>${selectedCategory === 'all' ? 'همه محصولات' : selectedCategory}</b> در حال حاضر محصول فعالی وجود ندارد.`,
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت به دسته‌ها', callback_data: 'menu_categories', style: 'danger' }]] }
-            })
-          });
+          await sendOrEditBotMessage(
+            token,
+            chatId,
+            messageId,
+            `در دسته‌بندی <b>${selectedCategory === 'all' ? 'همه محصولات' : selectedCategory}</b> در حال حاضر محصول فعالی وجود ندارد.`,
+            [[{ text: '🔙 بازگشت به دسته‌ها', callback_data: 'menu_categories', style: 'danger' }]]
+          );
           return;
         }
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -7601,15 +7552,13 @@ async function startServer() {
         const prod = products.find(p => p.id === prodId);
         if (!prod) return;
         userStates.set(chatId, { mode: 'custom_qty_input', productId: prodId });
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `🔢 <b>تعداد دلخواه ${prod.name}</b>\n\nلطفاً تعداد (${prod.unit}) را وارد کنید:\n<i>(مثال: 2 یا 4.5)</i>`,
-            parse_mode: 'HTML'
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          `🔢 <b>تعداد دلخواه ${prod.name}</b>\n\nلطفاً تعداد (${prod.unit}) را وارد کنید:\n<i>(مثال: 2 یا 4.5)</i>`,
+          [[{ text: '❌ انصراف', callback_data: 'view_cart', style: 'danger' }]]
+        );
       } else if (data.startsWith('add_qty_')) {
         // Quick-add buttons on product cards: add_qty_<productId>_<quantity>.
         // These previously had no handler, so tapping "➕ ۱ / ➕ ۲" did nothing.
@@ -7644,15 +7593,13 @@ async function startServer() {
         const prod = products.find(p => p.id === prodId);
         if (!prod) return;
         userStates.set(chatId, { mode: 'ask_quantity', productId: prodId });
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `🔢 <b>${prod.name}</b>\n\nچند ${prod.unit} از این محصول می‌خواهید؟\n<i>(فقط عدد وارد کنید، مثلاً: 2)</i>`,
-            parse_mode: 'HTML'
-          })
-        });
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          `🔢 <b>${prod.name}</b>\n\nچند ${prod.unit} از این محصول می‌خواهید؟\n<i>(فقط عدد وارد کنید، مثلاً: 2)</i>`,
+          [[{ text: '❌ انصراف', callback_data: 'view_cart', style: 'danger' }]]
+        );
       } else if (data === 'view_cart') {
         await sendBotCartView(token, chatId, messageId);
       } else if (data === 'cart_remove_item_menu') {
@@ -7822,27 +7769,24 @@ async function startServer() {
           body: JSON.stringify({ callback_query_id: cb.id, text: 'در حال باز کردن فرآیند پرداخت…' })
         }).catch(() => {});
         try {
-          const tgCtx = { token, chatId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg: { from: cb.from } };
+          const tgCtx = { token, chatId, messageId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg: { from: cb.from } };
           await startCheckout(tgCtx);
           console.log('[checkout] startCheckout finished without error');
         } catch (err) {
           console.error('[checkout] startCheckout FAILED:', err);
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              parse_mode: 'HTML',
-              text: '⚠️ در باز کردن پرداخت مشکلی پیش آمد. لطفاً دوباره از سبد خرید اقدام کنید.',
-              reply_markup: { inline_keyboard: [
-                [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }],
-                [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]
-              ] }
-            })
-          }).catch(() => {});
+          await sendOrEditBotMessage(
+            token,
+            chatId,
+            messageId,
+            '⚠️ در باز کردن پرداخت مشکلی پیش آمد. لطفاً دوباره از سبد خرید اقدام کنید.',
+            [
+              [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }],
+              [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]
+            ]
+          );
         }
       } else if (data === 'delivery_pickup' || data === 'delivery_delivery' || data === 'payment_cash_on_delivery' || data === 'payment_online' || data === 'checkout_skip_discount' || data === 'has_discount' || data === 'no_discount' || data === 'confirm_order' || data === 'cancel_order' || data === 'checkout_new_address' || data.startsWith('checkout_saved_address_')) {
-        const tgCtx = { token, chatId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg: { from: cb.from } };
+        const tgCtx = { token, chatId, messageId, products, orders, discounts, customers, botSettings, userCarts, userStates, msg: { from: cb.from } };
         const handled = await handleCheckoutCallback(tgCtx, data);
         if (handled) {
           saveAllData();

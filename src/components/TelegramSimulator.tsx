@@ -261,7 +261,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     ]);
   };
 
-  const sendCustomerWelcomeMessage = () => {
+  const sendCustomerWelcomeMessage = (editInPlace = false) => {
     if (botSettings.storeRulesEnabled && !simulatorRulesAccepted) {
       const mode = botSettings.storeRulesDisplayMode || 'all';
       const buttonText = botSettings.storeRulesButtonText || '✅ قوانین را مطالعه کرده و موافقم';
@@ -269,26 +269,25 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         .replace(/\{storeName\}/g, botSettings.storeName || 'فروشگاه');
 
       const buttons: TelegramInlineButton[][] = [
-        [{ text: buttonText, callback_data: 'accept_store_rules' }]
+        [{ text: buttonText, callback_data: 'accept_store_rules', style: 'success' }]
       ];
 
       if (mode === 'image' && botSettings.storeRulesImage) {
-        addBotMessage(
-          '📜 <b>قوانین و مقررات فروشگاه</b>\nلطفاً تصویر فوق را مطالعه کرده و در صورت موافقت گزینه زیر را انتخاب کنید:',
-          buttons,
-          botSettings.storeRulesImage,
-          200
-        );
+        if (editInPlace) {
+          editBotMessage('📜 <b>قوانین و مقررات فروشگاه</b>\nلطفاً تصویر فوق را مطالعه کرده و در صورت موافقت گزینه زیر را انتخاب کنید:', buttons, botSettings.storeRulesImage);
+        } else {
+          addBotMessage('📜 <b>قوانین و مقررات فروشگاه</b>\nلطفاً تصویر فوق را مطالعه کرده و در صورت موافقت گزینه زیر را انتخاب کنید:', buttons, botSettings.storeRulesImage, 200);
+        }
         return;
       }
 
       if (mode === 'pdf' && botSettings.storeRulesPdf) {
-        addBotMessage(
-          `📄 <b>فایل قوانین و مقررات فروشگاه:</b>\n📎 <code>${botSettings.storeRulesPdfFilename || 'Store-Rules.pdf'}</code>\n\nلطفاً فایل ضمیمه را مطالعه نموده و سپس گزینه زیر را لمس نمایید:`,
-          buttons,
-          undefined,
-          200
-        );
+        const text = `📄 <b>فایل قوانین و مقررات فروشگاه:</b>\n📎 <code>${botSettings.storeRulesPdfFilename || 'Store-Rules.pdf'}</code>\n\nلطفاً فایل ضمیمه را مطالعه نموده و سپس گزینه زیر را لمس نمایید:`;
+        if (editInPlace) {
+          editBotMessage(text, buttons);
+        } else {
+          addBotMessage(text, buttons, undefined, 200);
+        }
         return;
       }
 
@@ -299,31 +298,34 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         }
       }
 
-      addBotMessage(
-        rulesText + extraContent,
-        buttons,
-        (mode === 'all' && botSettings.storeRulesImage) ? botSettings.storeRulesImage : undefined,
-        200
-      );
+      if (editInPlace) {
+        editBotMessage(rulesText + extraContent, buttons, (mode === 'all' && botSettings.storeRulesImage) ? botSettings.storeRulesImage : undefined);
+      } else {
+        addBotMessage(rulesText + extraContent, buttons, (mode === 'all' && botSettings.storeRulesImage) ? botSettings.storeRulesImage : undefined, 200);
+      }
       return;
     }
 
     const text = `🌸 <b>به ربات رسمی قنادی ${botSettings.storeName} خوش آمدید!</b>\n\n${botSettings.welcomeMessage}\n\n🍰 انواع کیک‌های سفارشی، شیرینی تر و خامه‌ای، باقلوای تازه و دسرهای بین‌المللی با پخت روزانه.\n\n👇 جهت مشاهده محصولات، انتخاب تعداد و ثبت سفارش از دکمه‌های شیشه‌ای زیر استفاده نمایید:`;
     const buttons: TelegramInlineButton[][] = [
       [
-        { text: '🍰 منوی محصولات و سفارش آنلاین', callback_data: 'customer_categories' },
-        { text: `🛒 سبد خرید (${toPersianDigits(cart.reduce((s, i) => s + i.quantity, 0))})`, callback_data: 'view_cart' }
+        { text: '🍰 منوی محصولات و سفارش آنلاین', callback_data: 'customer_categories', style: 'primary' },
+        { text: `🛒 سبد خرید (${toPersianDigits(cart.reduce((s, i) => s + i.quantity, 0))})`, callback_data: 'view_cart', style: 'primary' }
       ],
       [
-        { text: '📦 سفارشات من', callback_data: 'track_orders_list' },
-        { text: '⭐ پرفروش‌ترین‌های هفته', callback_data: 'cat_all' }
+        { text: '📦 سفارشات من', callback_data: 'track_orders_list', style: 'primary' },
+        { text: '⭐ پرفروش‌ترین‌های هفته', callback_data: 'cat_all', style: 'primary' }
       ],
       [
-        { text: '📍 آدرس، تلفن و درباره قنادی', callback_data: 'contact_info' },
-        { text: '👨‍🍳 ورود به پنل مدیریت', callback_data: 'switch_to_admin' }
+        { text: '📍 آدرس، تلفن و درباره قنادی', callback_data: 'contact_info', style: 'primary' },
+        { text: '👨‍🍳 ورود به پنل مدیریت', callback_data: 'switch_to_admin', style: 'danger' }
       ]
     ];
-    addBotMessage(text, buttons, 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80', 200);
+    if (editInPlace) {
+      editBotMessage(text, buttons, 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80');
+    } else {
+      addBotMessage(text, buttons, 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80', 200);
+    }
   };
 
   // Helper to calculate cart totals and validate discount
@@ -376,7 +378,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
   };
 
   // Helper to render formal invoice preview message
-  const sendInvoicePreviewMessage = (draft: Partial<Order>) => {
+  const sendInvoicePreviewMessage = (draft: Partial<Order>, editInPlace = false) => {
     const { subtotal, isFreeShipping, shippingFee, discountAmount, totalAmount, validDiscount } = getCartCalculation();
 
     let invoiceText = `🧾 <b>پیش‌نمایش فاکتور نهایی سفارش شما</b>\n`;
@@ -414,19 +416,23 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
     const buttons: TelegramInlineButton[][] = [
       [
-        { text: '✅ تایید نهایی و ثبت سفارش', callback_data: 'confirm_final_order' }
+        { text: '✅ تایید نهایی و ثبت سفارش', callback_data: 'confirm_final_order', style: 'success' }
       ],
       [
-        { text: '✏️ ویرایش آدرس', callback_data: 'edit_checkout_address' },
-        { text: '✏️ ویرایش نام و تلفن', callback_data: 'edit_checkout_contact' }
+        { text: '✏️ ویرایش آدرس', callback_data: 'edit_checkout_address', style: 'primary' },
+        { text: '✏️ ویرایش نام و تلفن', callback_data: 'edit_checkout_contact', style: 'primary' }
       ],
       [
-        { text: '🏷️ تغییر کد تخفیف', callback_data: 'apply_discount_prompt' },
-        { text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }
+        { text: '🏷️ تغییر کد تخفیف', callback_data: 'apply_discount_prompt', style: 'primary' },
+        { text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'danger' }
       ]
     ];
 
-    addBotMessage(invoiceText, buttons);
+    if (editInPlace) {
+      editBotMessage(invoiceText, buttons);
+    } else {
+      addBotMessage(invoiceText, buttons);
+    }
   };
 
   const sendAdminWelcomeMessage = () => {
@@ -492,38 +498,14 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
     // Accept store rules in simulator
     if (data === 'accept_store_rules') {
-      addUserMessage(botSettings.storeRulesButtonText || '✅ قوانین را مطالعه کرده و موافقم');
       setSimulatorRulesAccepted(true);
-      addBotMessage(
-        `✅ <b>قوانین با موفقیت تأیید شد.</b>\nبه قنادی ${botSettings.storeName || 'ما'} خوش آمدید!`,
-        undefined,
-        undefined,
-        150
-      );
-      setTimeout(() => {
-        const text = `🌸 <b>به ربات رسمی قنادی ${botSettings.storeName} خوش آمدید!</b>\n\n${botSettings.welcomeMessage}\n\n🍰 انواع کیک‌های سفارشی، شیرینی تر و خامه‌ای، باقلوای تازه و دسرهای بین‌المللی با پخت روزانه.\n\n👇 جهت مشاهده محصولات، انتخاب تعداد و ثبت سفارش از دکمه‌های شیشه‌ای زیر استفاده نمایید:`;
-        const buttons: TelegramInlineButton[][] = [
-          [
-            { text: '🍰 منوی محصولات و سفارش آنلاین', callback_data: 'customer_categories' },
-            { text: `🛒 سبد خرید (${toPersianDigits(cart.reduce((s, i) => s + i.quantity, 0))})`, callback_data: 'view_cart' }
-          ],
-          [
-            { text: '📦 سفارشات من', callback_data: 'track_orders_list' },
-            { text: '⭐ پرفروش‌ترین‌های هفته', callback_data: 'cat_all' }
-          ],
-          [
-            { text: '📍 آدرس، تلفن و درباره قنادی', callback_data: 'contact_info' },
-            { text: '👨‍🍳 ورود به پنل مدیریت', callback_data: 'switch_to_admin' }
-          ]
-        ];
-        addBotMessage(text, buttons, 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80', 200);
-      }, 500);
+      sendCustomerWelcomeMessage(true);
       return;
     }
 
     // Customer Navigation
     if (data === 'back_to_main') {
-      sendCustomerWelcomeMessage();
+      sendCustomerWelcomeMessage(true);
       return;
     }
     if (data === 'back_to_admin') {
@@ -532,7 +514,6 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     }
 
     if (data === 'customer_categories') {
-      addUserMessage('مشاهده منو و دسته‌بندی‌ها 🍰');
       const categories: ProductCategory[] = [
         'کیک و پای',
         'شیرینی تر و خامه‌ای',
@@ -544,18 +525,18 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       const categoryButtons: TelegramInlineButton[][] = [];
       for (let i = 0; i < categories.length; i += 2) {
         const row: TelegramInlineButton[] = [
-          { text: categories[i], callback_data: `cat_${categories[i]}` }
+          { text: categories[i], callback_data: `cat_${categories[i]}`, style: 'primary' }
         ];
         if (categories[i + 1]) {
-          row.push({ text: categories[i + 1], callback_data: `cat_${categories[i + 1]}` });
+          row.push({ text: categories[i + 1], callback_data: `cat_${categories[i + 1]}`, style: 'primary' });
         }
         categoryButtons.push(row);
       }
       categoryButtons.push([
-        { text: '🌟 همه محصولات پرفروش', callback_data: 'cat_all' },
-        { text: '🔙 منوی اصلی', callback_data: 'back_to_main' }
+        { text: '🌟 همه محصولات پرفروش', callback_data: 'cat_all', style: 'primary' },
+        { text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }
       ]);
-      addBotMessage(
+      editBotMessage(
         '🧁 <b>لطفاً دسته‌بندی مورد نظر خود را انتخاب نمایید:</b>\nهمه شیرینی‌ها با بهترین مواد اولیه تازه به صورت روزانه پخت می‌شوند.',
         categoryButtons
       );
@@ -568,18 +549,16 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         ? products 
         : products.filter(p => p.category === selectedCategory);
 
-      addUserMessage(`دسته‌بندی: ${selectedCategory === 'all' ? 'همه محصولات' : selectedCategory}`);
-
       if (filteredProducts.length === 0) {
-        addBotMessage(
+        editBotMessage(
           `در دسته‌بندی <b>${selectedCategory}</b> در حال حاضر محصول فعالی وجود ندارد.`,
-          [[{ text: '🔙 بازگشت به دسته‌ها', callback_data: 'customer_categories' }]]
+          [[{ text: '🔙 بازگشت به دسته‌ها', callback_data: 'customer_categories', style: 'danger' }]]
         );
         return;
       }
 
       addBotMessage(
-        `🍰 <b>محصولات ${selectedCategory === 'all' ? 'پرفروش' : selectedCategory} (${toPersianDigits(filteredProducts.length)} مورد):</b>\nبرای انتخاب تعداد دلخواه (مثلاً ۱، ۲، ۳ یا ۵ کیلوگرم) از دکمه‌های شیشه‌ای زیر هر محصول استفاده کنید:`,
+        `🍰 <b>محصولات ${selectedCategory === 'all' ? 'پرفروش' : selectedCategory} (${toPersianDigits(filteredProducts.length)} مورد):</b>\nبرای انتخاب تعداد دلخواه از دکمه‌های شیشه‌ای زیر هر محصول استفاده کنید:`,
         undefined,
         undefined,
         150
@@ -598,23 +577,23 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         const buttons: TelegramInlineButton[][] = [
           // Row 1: Direct Quantity Choice
           [
-            { text: `➕ ۱ ${prod.unit}`, callback_data: `add_qty_${prod.id}_1` },
-            { text: `➕ ۲ ${prod.unit}`, callback_data: `add_qty_${prod.id}_2` },
-            { text: `➕ ۳ ${prod.unit}`, callback_data: `add_qty_${prod.id}_3` },
-            { text: `➕ ۵ ${prod.unit}`, callback_data: `add_qty_${prod.id}_5` },
+            { text: `➕ ۱ ${prod.unit}`, callback_data: `add_qty_${prod.id}_1`, style: 'success' },
+            { text: `➕ ۲ ${prod.unit}`, callback_data: `add_qty_${prod.id}_2`, style: 'success' },
+            { text: `➕ ۳ ${prod.unit}`, callback_data: `add_qty_${prod.id}_3`, style: 'success' },
+            { text: `➕ ۵ ${prod.unit}`, callback_data: `add_qty_${prod.id}_5`, style: 'success' },
           ],
           // Row 2: Fine adjustment if in cart
           ...(inCartQty > 0 ? [
             [
-              { text: `➕ ۱ واحد بیشتر`, callback_data: `inc_cart_${prod.id}` },
-              { text: `➖ ۱ واحد کمتر`, callback_data: `dec_cart_${prod.id}` },
-              { text: `🗑️ حذف از سبد`, callback_data: `remove_from_cart_${prod.id}` }
+              { text: `➕ ۱ واحد بیشتر`, callback_data: `inc_cart_${prod.id}`, style: 'primary' },
+              { text: `➖ ۱ واحد کمتر`, callback_data: `dec_cart_${prod.id}`, style: 'primary' },
+              { text: `🗑️ حذف از سبد`, callback_data: `remove_from_cart_${prod.id}`, style: 'danger' }
             ]
           ] : []),
           // Row 3: Navigation
           [
-            { text: '🛒 مشاهده سبد و ثبت خرید', callback_data: 'view_cart' },
-            { text: '🔙 دسته‌ها', callback_data: 'customer_categories' }
+            { text: '🛒 مشاهده سبد و ثبت خرید', callback_data: 'view_cart', style: 'primary' },
+            { text: '🔙 دسته‌ها', callback_data: 'customer_categories', style: 'danger' }
           ]
         ];
 
@@ -641,17 +620,18 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
       const currentQty = (cart.find(c => c.productId === prodId)?.quantity || 0) + qtyToAdd;
 
-      addBotMessage(
+      editBotMessage(
         `✅ تعداد <b>${toPersianDigits(qtyToAdd)} ${prod.unit}</b> از «${prod.name}» به سبد افزوده شد.\n📌 <b>تعداد کل در سبد خرید:</b> <b>${toPersianDigits(currentQty)} ${prod.unit}</b>`,
         [
           [
-            { text: '🛒 مشاهده سبد و تسویه حساب', callback_data: 'view_cart' },
-            { text: '➕ افزودن بیشتر', callback_data: `inc_cart_${prod.id}` }
+            { text: '🛒 مشاهده سبد و تسویه حساب', callback_data: 'view_cart', style: 'primary' },
+            { text: '➕ افزودن بیشتر', callback_data: `inc_cart_${prod.id}`, style: 'success' }
           ],
           [
-            { text: '🍰 منوی سایر شیرینی‌ها', callback_data: 'customer_categories' }
+            { text: '🍰 منوی سایر شیرینی‌ها', callback_data: 'customer_categories', style: 'primary' }
           ]
-        ]
+        ],
+        prod.image
       );
       return;
     }
@@ -671,11 +651,11 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         return [...prev, { productId: prodId, quantity: 1 }];
       });
 
-      addBotMessage(`➕ تعداد <b>${prod.name}</b> به <b>${toPersianDigits(newQty)} ${prod.unit}</b> افزایش یافت.`, [
+      editBotMessage(`➕ تعداد <b>${prod.name}</b> به <b>${toPersianDigits(newQty)} ${prod.unit}</b> افزایش یافت.`, [
         [
-          { text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' },
-          { text: '➕ ۱ واحد بیشتر', callback_data: `inc_cart_${prod.id}` },
-          { text: '➖ ۱ واحد کمتر', callback_data: `dec_cart_${prod.id}` }
+          { text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' },
+          { text: '➕ ۱ واحد بیشتر', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+          { text: '➖ ۱ واحد کمتر', callback_data: `dec_cart_${prod.id}`, style: 'danger' }
         ]
       ]);
       return;
@@ -699,14 +679,15 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       });
 
       if (remainQty === 0) {
-        addBotMessage(`🗑️ محصول <b>${prod.name}</b> از سبد خرید حذف شد.`, [
-          [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' }]
+        editBotMessage(`🗑️ محصول <b>${prod.name}</b> از سبد خرید حذف شد.`, [
+          [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }],
+          [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
         ]);
       } else {
-        addBotMessage(`➖ تعداد <b>${prod.name}</b> به <b>${toPersianDigits(remainQty)} ${prod.unit}</b> کاهش یافت.`, [
+        editBotMessage(`➖ تعداد <b>${prod.name}</b> به <b>${toPersianDigits(remainQty)} ${prod.unit}</b> کاهش یافت.`, [
           [
-            { text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' },
-            { text: '➕ افزایش', callback_data: `inc_cart_${prod.id}` }
+            { text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' },
+            { text: '➕ افزایش', callback_data: `inc_cart_${prod.id}`, style: 'success' }
           ]
         ]);
       }
@@ -718,11 +699,10 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       const prod = products.find(p => p.id === prodId);
       setCart(prev => prev.filter(i => i.productId !== prodId));
 
-      addUserMessage(`حذف ${prod?.name || 'محصول'} از سبد 🗑️`);
-      addBotMessage(`🗑️ محصول <b>${prod?.name || ''}</b> با موفقیت از سبد خرید شما حذف گردید.`, [
+      editBotMessage(`🗑️ محصول <b>${prod?.name || ''}</b> با موفقیت از سبد خرید شما حذف گردید.`, [
         [
-          { text: '🛒 مشاهده سبد به‌روزشده', callback_data: 'view_cart' },
-          { text: '🍰 بازگشت به منو', callback_data: 'customer_categories' }
+          { text: '🛒 مشاهده سبد به‌روزشده', callback_data: 'view_cart', style: 'primary' },
+          { text: '🍰 بازگشت به منو', callback_data: 'customer_categories', style: 'primary' }
         ]
       ]);
       return;
@@ -946,7 +926,6 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
     // Customer Discount Handlers
     if (data === 'apply_discount_prompt') {
-      addUserMessage('اعمال کد تخفیف 🏷️');
       setIsAwaitingDiscountCode(true);
 
       const activeDiscounts = discounts.filter(d => d.isActive);
@@ -958,16 +937,16 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
             ? `🎟️ کد ${d.code} (${toPersianDigits(d.value)}٪ تخفیف)` 
             : `🎟️ کد ${d.code} (${formatPrice(d.value)} تخفیف)`;
           discountButtons.push([
-            { text: label, callback_data: `apply_code_direct_${d.code}` }
+            { text: label, callback_data: `apply_code_direct_${d.code}`, style: 'primary' }
           ]);
         });
       }
 
       discountButtons.push([
-        { text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }
+        { text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'danger' }
       ]);
 
-      addBotMessage(
+      editBotMessage(
         `🏷️ <b>اعمال کد تخفیف در سبد خرید</b>\n\nلطفاً کد تخفیف خود را در کادر پیام زیر تایپ کرده و ارسال نمایید (مثال: <code>SHIRIN20</code> یا <code>WELCOME50</code>).\n\n👇 همچنین می‌توانید از کدهای تخفیف فعال و عمومی زیر مستقیماً استفاده کنید:`,
         discountButtons
       );
@@ -976,45 +955,44 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
     if (data.startsWith('apply_code_direct_')) {
       const promoCode = data.replace('apply_code_direct_', '').trim().toUpperCase();
-      addUserMessage(`اعمال کد تخفیف ${promoCode} 🎟️`);
 
       const { subtotal } = getCartCalculation();
       const disc = discounts.find(d => d.code.toUpperCase() === promoCode);
 
       if (!disc) {
-        addBotMessage('❌ کد تخفیف وارد شده معتبر نمی‌باشد.', [
-          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }]
+        editBotMessage('❌ کد تخفیف وارد شده معتبر نمی‌باشد.', [
+          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]
         ]);
         return;
       }
 
       if (!disc.isActive) {
-        addBotMessage('❌ این کد تخفیف در حال حاضر غیرفعال است.', [
-          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }]
+        editBotMessage('❌ این کد تخفیف در حال حاضر غیرفعال است.', [
+          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]
         ]);
         return;
       }
 
       if (disc.usageLimit && disc.usedCount >= disc.usageLimit) {
-        addBotMessage('❌ سقف استفاده از این کد تخفیف به پایان رسیده است.', [
-          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }]
+        editBotMessage('❌ سقف استفاده از این کد تخفیف به پایان رسیده است.', [
+          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]
         ]);
         return;
       }
 
       if (disc.expiresAt && new Date(disc.expiresAt) < new Date()) {
-        addBotMessage('❌ مهلت استفاده از این کد تخفیف منقضی شده است.', [
-          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }]
+        editBotMessage('❌ مهلت استفاده از این کد تخفیف منقضی شده است.', [
+          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]
         ]);
         return;
       }
 
       if (disc.minPurchaseAmount && subtotal < disc.minPurchaseAmount) {
-        addBotMessage(
+        editBotMessage(
           `⚠️ این کد تخفیف فقط برای سفارشات بالای <b>${formatPrice(disc.minPurchaseAmount)}</b> معتبر است.\nمبلغ فعلی سبد خرید شما: ${formatPrice(subtotal)}`,
           [
-            [{ text: '🍰 افزودن شیرینی دیگر به سبد', callback_data: 'customer_categories' }],
-            [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart' }]
+            [{ text: '🍰 افزودن شیرینی دیگر به سبد', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'danger' }]
           ]
         );
         return;
@@ -1038,35 +1016,33 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       });
       setIsAwaitingDiscountCode(false);
 
-      addBotMessage(
+      editBotMessage(
         `🎉 <b>کد تخفیف «${disc.code}» با موفقیت روی سبد خرید شما اعمال شد!</b>\n\n💰 <b>مبلغ تخفیف کسر شده:</b> <b>${formatPrice(calculatedDiscount)}</b>\n\nبرای مشاهده فاکتور نهایی یا تکمیل سفارش روی دکمه زیر کلیک کنید:`,
         [
-          [{ text: '🛒 مشاهده سبد خرید به‌روزشده', callback_data: 'view_cart' }],
-          [{ text: '💳 تکمیل خرید و تسویه حساب', callback_data: 'checkout_start' }]
+          [{ text: '🛒 مشاهده سبد خرید به‌روزشده', callback_data: 'view_cart', style: 'primary' }],
+          [{ text: '💳 تکمیل خرید و تسویه حساب', callback_data: 'checkout_start', style: 'success' }]
         ]
       );
       return;
     }
 
     if (data === 'remove_discount_code') {
-      addUserMessage('حذف کد تخفیف ❌');
       setAppliedDiscount(null);
-      addBotMessage('کد تخفیف از سبد خرید شما برداشته شد.', [
-        [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' }]
+      editBotMessage('کد تخفیف از سبد خرید شما برداشته شد.', [
+        [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
       ]);
       return;
     }
 
     if (data === 'checkout_start') {
       if (cart.length === 0) {
-        addBotMessage('🛒 سبد خرید شما خالی است! لطفاً ابتدا شیرینی مورد نظرتان را به سبد اضافه کنید.', [
-          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories' }]
+        editBotMessage('🛒 سبد خرید شما خالی است! لطفاً ابتدا شیرینی مورد نظرتان را به سبد اضافه کنید.', [
+          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]
         ]);
         return;
       }
-      addUserMessage('تکمیل خرید و ثبت آدرس 💳');
       setCheckoutStep({ step: 'name', draftOrder: {} });
-      addBotMessage(
+      editBotMessage(
         '👤 <b>مرحله ۱ از ۳: ثبت مشخصات خریدار</b>\n\nلطفاً <b>نام و نام خانوادگی</b> خود را در کادر پیام زیر تایپ و ارسال کنید:'
       );
       return;
@@ -1074,45 +1050,40 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
     if (data === 'view_invoice_preview') {
       if (cart.length === 0) {
-        addBotMessage('🛒 سبد خرید شما خالی است.', [
-          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories' }]
+        editBotMessage('🛒 سبد خرید شما خالی است.', [
+          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]
         ]);
         return;
       }
-      addUserMessage('🧾 مشاهده پیش‌نمایش فاکتور نهایی');
       const currentDraft = checkoutStep.draftOrder || {
         customerName: 'مشتری گرامی',
         customerPhone: '09120000000',
         customerAddress: 'تهران، تحویل فوری'
       };
       setCheckoutStep({ step: 'invoice_preview', draftOrder: currentDraft });
-      sendInvoicePreviewMessage(currentDraft);
+      sendInvoicePreviewMessage(currentDraft, true);
       return;
     }
 
     if (data === 'edit_checkout_address') {
-      addUserMessage('ویرایش آدرس تحویل ✏️');
       setCheckoutStep(prev => ({ ...prev, step: 'address' }));
-      addBotMessage('🏠 لطفاً <b>آدرس جدید تحویل</b> خود را وارد نمایید:');
+      editBotMessage('🏠 لطفاً <b>آدرس جدید تحویل</b> خود را در کادر پیام زیر وارد نمایید:');
       return;
     }
 
     if (data === 'edit_checkout_contact') {
-      addUserMessage('ویرایش مشخصات خریدار ✏️');
       setCheckoutStep(prev => ({ ...prev, step: 'name' }));
-      addBotMessage('👤 لطفاً <b>نام و نام خانوادگی</b> جدید خود را وارد نمایید:');
+      editBotMessage('👤 لطفاً <b>نام و نام خانوادگی</b> جدید خود را در کادر پیام زیر وارد نمایید:');
       return;
     }
 
     if (data === 'confirm_final_order') {
       if (cart.length === 0) {
-        addBotMessage('🛒 سبد خرید شما خالی است!', [
-          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories' }]
+        editBotMessage('🛒 سبد خرید شما خالی است!', [
+          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]
         ]);
         return;
       }
-
-      addUserMessage('✅ تایید نهایی فاکتور و ثبت سفارش');
 
       const draft = checkoutStep.draftOrder || {};
       let subtotal = 0;
@@ -1169,33 +1140,32 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       confirmationText += `👤 <b>به نام:</b> ${botSettings.cardHolder}\n\n`;
       confirmationText += `👩‍🍳 سفارش شما بلافاصله در ${botSettings.storeName || 'فروشگاه'} آماده‌سازی و از طریق پیک مخصوص برای شما ارسال خواهد شد.`;
 
-      addBotMessage(confirmationText, [
+      editBotMessage(confirmationText, [
         [
-          { text: '📦 پیگیری وضعیت این سفارش', callback_data: 'track_orders_list' },
-          { text: '🍰 سفارش جدید', callback_data: 'customer_categories' }
+          { text: '📦 پیگیری وضعیت این سفارش', callback_data: 'track_orders_list', style: 'primary' },
+          { text: '🍰 سفارش جدید', callback_data: 'customer_categories', style: 'success' }
         ]
       ]);
       return;
     }
 
     if (data === 'contact_info') {
-      addUserMessage('اطلاعات تماس و آدرس قنادی 📍');
       const text = `🏢 <b>${botSettings.storeName}</b>\n\n📝 ${botSettings.storeBio}\n\n📍 <b>آدرس حضوری:</b> ${botSettings.storeAddress}\n📞 <b>تلفن سفارشات و پشتیبانی:</b> ${botSettings.storePhone}\n💳 <b>شماره کارت رسمی:</b> <code>${botSettings.cardNumber}</code>\n👤 <b>به نام:</b> ${botSettings.cardHolder}\n🏦 <b>شماره شبا:</b> <code>${botSettings.shabaNumber}</code>\n\n🛵 ارسال فوری با پیک مخصوص کیک و شیرینی`;
       const buttons: TelegramInlineButton[][] = [
         [
-          { text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories' },
-          { text: '🔙 بازگشت به صفحه اصلی', callback_data: 'back_to_main' }
+          { text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' },
+          { text: '🔙 بازگشت به صفحه اصلی', callback_data: 'back_to_main', style: 'danger' }
         ]
       ];
-      addBotMessage(text, buttons, 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80');
+      editBotMessage(text, buttons, 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80');
       return;
     }
 
     if (data === 'track_orders_list') {
-      addUserMessage('پیگیری وضعیت سفارشات 📦');
       if (orders.length === 0) {
-        addBotMessage('شما در حال حاضر سفارش فعالی ندارید.', [
-          [{ text: '🍰 ثبت سفارش جدید', callback_data: 'customer_categories' }]
+        editBotMessage('شما در حال حاضر سفارش فعالی ندارید.', [
+          [{ text: '🍰 ثبت سفارش جدید', callback_data: 'customer_categories', style: 'primary' }],
+          [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
         ]);
         return;
       }
@@ -1212,9 +1182,9 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         };
         text += `🔹 <b>کد پیگیری:</b> <code>${ord.orderNumber}</code>\n   ▫️ وضعیت: <b>${statusMap[ord.status]}</b>\n   ▫️ مبلغ: ${formatPrice(ord.totalAmount)}\n   ▫️ تاریخ: ${formatDatePersian(ord.createdAt)}\n\n`;
       });
-      addBotMessage(text, [
-        [{ text: '🍰 ثبت سفارش جدید', callback_data: 'customer_categories' }],
-        [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }]
+      editBotMessage(text, [
+        [{ text: '🍰 ثبت سفارش جدید', callback_data: 'customer_categories', style: 'primary' }],
+        [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
       ]);
       return;
     }

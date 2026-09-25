@@ -14,6 +14,7 @@ interface SimpleMap<V> {
 interface TelegramContext {
   token: string;
   chatId: string;
+  messageId?: number;
   products: Product[];
   orders: Order[];
   discounts: DiscountCode[];
@@ -31,6 +32,27 @@ const getTelegramDisplayName = (message?: any): string => {
 };
 
 async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], photo?: string) {
+  if (ctx.messageId && !photo) {
+    try {
+      const editPayload: any = {
+        chat_id: ctx.chatId,
+        message_id: ctx.messageId,
+        parse_mode: 'HTML',
+        text,
+      };
+      if (buttons && buttons.length > 0) editPayload.reply_markup = { inline_keyboard: buttons };
+      const res = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editPayload)
+      });
+      const body: any = await res.json().catch(() => null);
+      if (body?.ok || (typeof body?.description === 'string' && body.description.includes('message is not modified'))) {
+        return { ok: true, status: 200, body };
+      }
+    } catch { /* fallback to normal send below */ }
+  }
+
   const endpoint = photo ? 'sendPhoto' : 'sendMessage';
   const payload: any = photo
     ? { chat_id: ctx.chatId, parse_mode: 'HTML', photo, caption: text }

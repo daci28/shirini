@@ -403,6 +403,112 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
     return true;
   }
 
+  // Interactive quantity picker with + and - glass buttons
+  if (data.startsWith('add_to_cart_') || data.startsWith('pick_qty_')) {
+    let prodId: string;
+    let qty = 1;
+    if (data.startsWith('add_to_cart_')) {
+      prodId = data.replace('add_to_cart_', '');
+    } else {
+      const parts = data.replace('pick_qty_', '').split('_');
+      prodId = parts[0];
+      qty = Math.max(1, parseInt(parts[1], 10) || 1);
+    }
+
+    const prod = ctx.products.find(p => p.id === prodId);
+    if (!prod) return true;
+
+    const effectivePrice = prod.discountPercent
+      ? Math.round(prod.price * (100 - prod.discountPercent) / 100)
+      : prod.price;
+    const totalPrice = effectivePrice * qty;
+
+    const discountText = prod.discountPercent
+      ? ` <s>${prod.price.toLocaleString('fa-IR')}</s> ◀ <b>${effectivePrice.toLocaleString('fa-IR')} تومان</b> (${prod.discountPercent}٪ تخفیف)`
+      : ` <b>${effectivePrice.toLocaleString('fa-IR')} تومان</b>`;
+
+    let text = `🍰 <b>تنظیم تعداد سفارش: ${prod.name}</b>\n\n`;
+    text += `💰 <b>قیمت واحد:</b>${discountText} / هر ${prod.unit}\n`;
+    text += `📦 <b>تعداد انتخابی:</b> <b>${qty.toLocaleString('fa-IR')} ${prod.unit}</b>\n`;
+    text += `💎 <b>مبلغ کل این سفارش:</b> <b>${totalPrice.toLocaleString('fa-IR')} تومان</b>\n\n`;
+    text += `👇 با دکمه‌های ➕ و ➖ زیر تعداد را کم و زیاد کرده و سپس «ثبت در سبد خرید» را لمس کنید:`;
+
+    const prevQty = Math.max(1, qty - 1);
+    const nextQty = qty + 1;
+
+    const buttons: any[][] = [
+      [
+        { text: '➖ ۱', callback_data: `pick_qty_${prod.id}_${prevQty}`, style: 'primary' },
+        { text: `📦 ${qty.toLocaleString('fa-IR')} ${prod.unit}`, callback_data: 'noop_qty', style: 'primary' },
+        { text: '➕ ۱', callback_data: `pick_qty_${prod.id}_${nextQty}`, style: 'success' },
+      ],
+      [
+        { text: '➕ ۲', callback_data: `pick_qty_${prod.id}_${qty + 2}`, style: 'primary' },
+        { text: '➕ ۵', callback_data: `pick_qty_${prod.id}_${qty + 5}`, style: 'primary' },
+        { text: '🔄 ریست (۱)', callback_data: `pick_qty_${prod.id}_1`, style: 'primary' },
+      ],
+      [
+        { text: `🛒 ثبت در سبد خرید (${totalPrice.toLocaleString('fa-IR')} تومان)`, callback_data: `confirm_pick_${prod.id}_${qty}`, style: 'success' },
+      ],
+      [
+        { text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' },
+        { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'primary' },
+      ],
+      [
+        { text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' },
+      ]
+    ];
+
+    await tgSend(ctx, text, buttons, prod.image);
+    return true;
+  }
+
+  if (data === 'noop_qty') {
+    return true;
+  }
+
+  if (data.startsWith('confirm_pick_')) {
+    const parts = data.replace('confirm_pick_', '').split('_');
+    const prodId = parts[0];
+    const qtyToAdd = Math.max(1, parseInt(parts[1], 10) || 1);
+    const prod = ctx.products.find(p => p.id === prodId);
+    if (!prod) return true;
+
+    const cart = ctx.userCarts.get(ctx.chatId) || [];
+    const existing = cart.find((i: any) => i.productId === prod.id);
+    if (existing) {
+      existing.quantity += qtyToAdd;
+    } else {
+      cart.push({ productId: prod.id, quantity: qtyToAdd });
+    }
+    ctx.userCarts.set(ctx.chatId, cart);
+    ctx.userStates.delete(ctx.chatId);
+
+    const totalQty = cart.reduce((s: number, i: any) => s + i.quantity, 0);
+    let cartTotal = 0;
+    for (const item of cart) {
+      const p = ctx.products.find(prodItem => prodItem.id === item.productId);
+      if (p) {
+        const eff = p.discountPercent ? Math.round(p.price * (100 - p.discountPercent) / 100) : p.price;
+        cartTotal += eff * item.quantity;
+      }
+    }
+
+    const confirmText = `✅ <b>${qtyToAdd.toLocaleString('fa-IR')} ${prod.unit}</b> از «${prod.name}» با موفقیت به سبد خرید افزوده شد!\n\n🛒 <b>تعداد کل اقلام در سبد:</b> ${totalQty.toLocaleString('fa-IR')}\n💎 <b>مبلغ کل سبد:</b> ${cartTotal.toLocaleString('fa-IR')} تومان`;
+
+    await tgSend(
+      ctx,
+      confirmText,
+      [
+        [{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart', style: 'success' }],
+        [{ text: '🍰 ادامه خرید و منوی محصولات', callback_data: 'menu_categories', style: 'primary' }],
+        [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+      ],
+      prod.image
+    );
+    return true;
+  }
+
   // Support message
 
   // My tickets

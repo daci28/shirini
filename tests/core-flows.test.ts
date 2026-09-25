@@ -2998,8 +2998,9 @@ function testCartItemRemovalFlow() {
   const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
   const simSource = fs.readFileSync(new URL('../src/components/TelegramSimulator.tsx', import.meta.url), 'utf8');
 
-  // Verify server.ts has 5 buttons in shopping cart
+  // Verify server.ts has 5 buttons in shopping cart and uses editMessageText
   assert.ok(serverSource.includes('sendBotCartView'), 'server.ts must have sendBotCartView helper');
+  assert.ok(serverSource.includes('sendOrEditBotMessage'), 'server.ts must have sendOrEditBotMessage helper');
   assert.ok(serverSource.includes('cart_remove_item_menu'), 'server.ts must handle cart_remove_item_menu callback');
   assert.ok(serverSource.includes('cart_rem_item_'), 'server.ts must handle cart_rem_item_ callback');
   assert.ok(serverSource.includes('cart_rem_qty_'), 'server.ts must handle cart_rem_qty_ callback');
@@ -3007,7 +3008,12 @@ function testCartItemRemovalFlow() {
   assert.ok(serverSource.includes('cart_remove_custom_qty'), 'server.ts must handle custom quantity input state');
   assert.ok(serverSource.includes('حذف محصول مورد نظر'), 'server.ts must have 5th button label for removing selected product');
 
-  // Verify TelegramSimulator.tsx has cart removal features
+  // Verify quick reduction buttons (cart_rem_qty_${prod.id}_1, _2, _3) were removed
+  assert.ok(!serverSource.includes('cart_rem_qty_${prod.id}_1'), 'server.ts must not have quick 1-unit deduction buttons');
+  assert.ok(!simSource.includes('cart_rem_qty_${prod.id}_1'), 'Simulator must not have quick 1-unit deduction buttons');
+
+  // Verify TelegramSimulator.tsx has cart removal features and editBotMessage
+  assert.ok(simSource.includes('editBotMessage'), 'Simulator must have editBotMessage');
   assert.ok(simSource.includes('cart_remove_item_menu'), 'Simulator must handle cart_remove_item_menu');
   assert.ok(simSource.includes('cart_rem_item_'), 'Simulator must handle cart_rem_item_');
   assert.ok(simSource.includes('cart_rem_qty_'), 'Simulator must handle cart_rem_qty_');
@@ -3015,7 +3021,7 @@ function testCartItemRemovalFlow() {
   assert.ok(simSource.includes('awaitingCartRemovalProdId'), 'Simulator must handle custom reduction state');
   assert.ok(simSource.includes('حذف محصول مورد نظر'), 'Simulator must have 5th button label');
 
-  console.log('✅ 5th cart item removal button and quantity reduction flow are fully implemented');
+  console.log('✅ 5th cart item removal button, in-place message editing, and full/custom removal flow are fully implemented');
 }
 
 async function main() {

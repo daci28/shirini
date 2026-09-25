@@ -214,6 +214,39 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     }, delayMs);
   };
 
+  // Helper to edit the last Bot message in place (like Telegram editMessageText)
+  const editBotMessage = (
+    text: string,
+    buttons?: TelegramInlineButton[][],
+    photo?: string
+  ) => {
+    setMessages((prev) => {
+      const lastBotIndex = [...prev].reverse().findIndex((m) => m.sender === 'bot');
+      if (lastBotIndex === -1) {
+        return [
+          ...prev,
+          {
+            id: `bot_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            sender: 'bot',
+            text,
+            photo,
+            timestamp: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
+            reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
+          },
+        ];
+      }
+      const actualIndex = prev.length - 1 - lastBotIndex;
+      const updated = [...prev];
+      updated[actualIndex] = {
+        ...updated[actualIndex],
+        text,
+        photo: photo !== undefined ? photo : updated[actualIndex].photo,
+        reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
+      };
+      return updated;
+    });
+  };
+
   // Helper to add user message
   const addUserMessage = (text: string, photo?: string) => {
     setMessages((prev) => [
@@ -697,17 +730,15 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
     if (data === 'clear_cart') {
       setCart([]);
-      addUserMessage('خالی کردن سبد خرید 🗑️');
-      addBotMessage('سبد خرید شما با موفقیت خالی شد.', [
-        [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories' }]
+      editBotMessage('🗑️ سبد خرید شما با موفقیت خالی شد.', [
+        [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
       ]);
       return;
     }
 
     if (data === 'view_cart') {
-      addUserMessage('مشاهده سبد خرید 🛒');
       if (cart.length === 0) {
-        addBotMessage(
+        editBotMessage(
           '🛒 <b>سبد خرید شما در حال حاضر خالی است!</b>\nبرای انتخاب شیرینی، کیک یا دسرهای خوشمزه روی دکمه زیر کلیک کنید:',
           [[{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]]
         );
@@ -778,14 +809,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         ]
       ];
 
-      addBotMessage(cartSummary, buttons);
+      editBotMessage(cartSummary, buttons);
       return;
     }
 
     if (data === 'cart_remove_item_menu') {
-      addUserMessage('🗑️ حذف محصول مورد نظر');
       if (cart.length === 0) {
-        addBotMessage(
+        editBotMessage(
           '🛒 <b>سبد خرید شما در حال حاضر خالی است!</b>',
           [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]]
         );
@@ -805,7 +835,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       buttons.push([
         { text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }
       ]);
-      addBotMessage(
+      editBotMessage(
         '🗑️ <b>حذف محصول از سبد خرید</b>\n\nلطفاً محصولی که قصد حذف یا کاهش تعداد آن را دارید انتخاب فرمایید:',
         buttons
       );
@@ -820,36 +850,29 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         handleCallbackQuery('view_cart');
         return;
       }
-      addUserMessage(`انتخاب حذف ${prod.name}`);
       if (item.quantity <= 1) {
-        setCart(prev => prev.filter(i => i.productId !== prodId));
-        if (cart.length <= 1) {
-          addBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+        const newCart = cart.filter(i => i.productId !== prodId);
+        setCart(newCart);
+        if (newCart.length === 0) {
+          editBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
             [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
           ]);
         } else {
-          addBotMessage(`✅ «${prod.name}» با موفقیت از سبد خرید حذف شد.`, [
-            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
-          ]);
+          // Re-render cart with newCart
+          setTimeout(() => handleCallbackQuery('view_cart'), 10);
         }
         return;
       }
 
-      // Quantity > 1 -> offer quick reduce options
-      const qtyButtons: TelegramInlineButton[][] = [];
-      qtyButtons.push([{ text: `➖ حذف ۱ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_1`, style: 'danger' }]);
-      if (item.quantity >= 3) {
-        qtyButtons.push([{ text: `➖ حذف ۲ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_2`, style: 'danger' }]);
-      }
-      if (item.quantity >= 4) {
-        qtyButtons.push([{ text: `➖ حذف ۳ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_3`, style: 'danger' }]);
-      }
-      qtyButtons.push([{ text: `🗑️ حذف کامل (${toPersianDigits(item.quantity)} ${prod.unit})`, callback_data: `cart_rem_qty_${prod.id}_all`, style: 'danger' }]);
-      qtyButtons.push([{ text: '🔢 وارد کردن تعداد دلخواه', callback_data: `cart_rem_custom_${prod.id}`, style: 'primary' }]);
-      qtyButtons.push([{ text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]);
+      // Quantity > 1 -> Only full removal and custom quantity selection
+      const qtyButtons: TelegramInlineButton[][] = [
+        [{ text: `🗑️ حذف کامل محصول (${toPersianDigits(item.quantity)} ${prod.unit})`, callback_data: `cart_rem_qty_${prod.id}_all`, style: 'danger' }],
+        [{ text: '🔢 وارد کردن تعداد دلخواه', callback_data: `cart_rem_custom_${prod.id}`, style: 'primary' }],
+        [{ text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+      ];
 
-      addBotMessage(
-        `🗑️ <b>حذف یا کاهش تعداد «${prod.name}»</b>\n\nتعداد فعلی در سبد خرید: <b>${toPersianDigits(item.quantity)} ${prod.unit}</b>\n\nچه تعداد می‌خواهید از این محصول حذف شود؟`,
+      editBotMessage(
+        `🗑️ <b>حذف یا کاهش تعداد «${prod.name}»</b>\n\nتعداد فعلی در سبد خرید: <b>${toPersianDigits(item.quantity)} ${prod.unit}</b>\n\nنوع حذف را انتخاب فرمایید:`,
         qtyButtons
       );
       return;
@@ -869,16 +892,14 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       }
 
       if (qtyStr === 'all') {
-        addUserMessage(`🗑️ حذف کامل ${prod.name}`);
-        setCart(prev => prev.filter(i => i.productId !== prodId));
-        if (cart.length <= 1) {
-          addBotMessage(`🗑️ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+        const newCart = cart.filter(i => i.productId !== prodId);
+        setCart(newCart);
+        if (newCart.length === 0) {
+          editBotMessage(`🗑️ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
             [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
           ]);
         } else {
-          addBotMessage(`✅ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.`, [
-            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
-          ]);
+          setTimeout(() => handleCallbackQuery('view_cart'), 10);
         }
         return;
       }
@@ -889,24 +910,20 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         return;
       }
 
-      addUserMessage(`➖ کسر ${toPersianDigits(deduct)} ${prod.unit} از ${prod.name}`);
       if (item.quantity - deduct <= 0) {
-        setCart(prev => prev.filter(i => i.productId !== prodId));
-        if (cart.length <= 1) {
-          addBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+        const newCart = cart.filter(i => i.productId !== prodId);
+        setCart(newCart);
+        if (newCart.length === 0) {
+          editBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
             [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
           ]);
         } else {
-          addBotMessage(`✅ «${prod.name}» از سبد خرید حذف شد.`, [
-            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
-          ]);
+          setTimeout(() => handleCallbackQuery('view_cart'), 10);
         }
       } else {
         const remaining = item.quantity - deduct;
         setCart(prev => prev.map(i => i.productId === prodId ? { ...i, quantity: remaining } : i));
-        addBotMessage(`✅ <b>${toPersianDigits(deduct)} ${prod.unit}</b> از «${prod.name}» کسر شد. (موجودی فعلی در سبد: ${toPersianDigits(remaining)} ${prod.unit})`, [
-          [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
-        ]);
+        setTimeout(() => handleCallbackQuery('view_cart'), 10);
       }
       return;
     }
@@ -919,9 +936,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         handleCallbackQuery('view_cart');
         return;
       }
-      addUserMessage(`🔢 کسر تعداد دلخواه از ${prod.name}`);
       setAwaitingCartRemovalProdId(prodId);
-      addBotMessage(
+      editBotMessage(
         `🔢 <b>کسر تعداد دلخواه از «${prod.name}»:</b>\n\nتعداد فعلی در سبد: <b>${toPersianDigits(item.quantity)} ${prod.unit}</b>\n\nلطفاً تعداد (${prod.unit}) که می‌خواهید حذف شود را به عدد وارد نمایید:\n<i>(مثال: 1 یا 2.5)</i>`,
         [[{ text: '❌ انصراف و بازگشت به سبد', callback_data: 'view_cart', style: 'danger' }]]
       );

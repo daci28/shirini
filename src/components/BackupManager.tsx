@@ -755,25 +755,26 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             </div>
 
             {/* Toggle Switch */}
-            <div className="flex items-center gap-3 bg-slate-950/80 px-4 py-2.5 rounded-2xl border border-slate-800">
-              <span className="text-xs font-semibold text-slate-300 select-none">وضعیت سرویس:</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={scheduleState.enabled}
-                onClick={() => setScheduleState(prev => ({ ...prev, enabled: !prev.enabled }))}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none p-0.5 ${
-                  scheduleState.enabled ? 'bg-emerald-500' : 'bg-slate-700'
-                }`}
-                dir="ltr"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ease-in-out ${
-                    scheduleState.enabled ? 'translate-x-5' : 'translate-x-0'
-                  }`}
+            <div className="flex items-center gap-3 bg-slate-950/80 px-4 py-2.5 rounded-2xl border border-slate-800 select-none">
+              <span className="text-xs font-semibold text-slate-300">وضعیت سرویس:</span>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0" dir="ltr">
+                <input
+                  type="checkbox"
+                  checked={Boolean(scheduleState.enabled)}
+                  onChange={() => setScheduleState(prev => ({ ...prev, enabled: !prev.enabled }))}
+                  className="sr-only peer"
                 />
-              </button>
-              <span className={`text-xs font-bold select-none ${scheduleState.enabled ? 'text-emerald-400' : 'text-slate-500'}`}>
+                <div className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                  scheduleState.enabled ? 'bg-emerald-500' : 'bg-slate-700'
+                }`}>
+                  <div
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-200 ease-in-out ${
+                      scheduleState.enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </label>
+              <span className={`text-xs font-bold ${scheduleState.enabled ? 'text-emerald-400' : 'text-slate-500'}`}>
                 {scheduleState.enabled ? 'روشن' : 'خاموش'}
               </span>
             </div>

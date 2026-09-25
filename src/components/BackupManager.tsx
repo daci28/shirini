@@ -756,21 +756,24 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
 
             {/* Toggle Switch */}
             <div className="flex items-center gap-3 bg-slate-950/80 px-4 py-2.5 rounded-2xl border border-slate-800">
-              <span className="text-xs font-semibold text-slate-300">وضعیت سرویس:</span>
+              <span className="text-xs font-semibold text-slate-300 select-none">وضعیت سرویس:</span>
               <button
                 type="button"
+                role="switch"
+                aria-checked={scheduleState.enabled}
                 onClick={() => setScheduleState(prev => ({ ...prev, enabled: !prev.enabled }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none p-0.5 ${
                   scheduleState.enabled ? 'bg-emerald-500' : 'bg-slate-700'
                 }`}
+                dir="ltr"
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    scheduleState.enabled ? 'translate-x-1' : 'translate-x-6'
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ease-in-out ${
+                    scheduleState.enabled ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>
-              <span className={`text-xs font-bold ${scheduleState.enabled ? 'text-emerald-400' : 'text-slate-500'}`}>
+              <span className={`text-xs font-bold select-none ${scheduleState.enabled ? 'text-emerald-400' : 'text-slate-500'}`}>
                 {scheduleState.enabled ? 'روشن' : 'خاموش'}
               </span>
             </div>

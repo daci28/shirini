@@ -92,7 +92,7 @@ async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], pho
   return result;
 }
 
-const CANCEL_ROW = [{ text: '❌ انصراف', callback_data: 'back_to_main' }];
+const CANCEL_ROW = [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' as const }];
 
 function knownProfile(ctx: TelegramContext) {
   const known = findBotCustomer(ctx.customers, ctx.chatId);
@@ -155,7 +155,7 @@ async function continueAfterDelivery(ctx: TelegramContext) {
 export async function startCheckout(ctx: TelegramContext) {
   const cart = ctx.userCarts.get(ctx.chatId) || [];
   if (cart.length === 0) {
-    await tgSend(ctx, '🛒 سبد خرید خالی است!', [[{ text: '🍰 منو', callback_data: 'menu_categories' }]]);
+    await tgSend(ctx, '🛒 سبد خرید خالی است!', [[{ text: '🍰 منو', callback_data: 'menu_categories', style: 'primary' }]]);
     return;
   }
 
@@ -203,8 +203,8 @@ async function sendDeliveryMethod(ctx: TelegramContext) {
     ctx,
     `${greeting}🚚 لطفاً <b>نحوهٔ دریافت سفارش</b> را انتخاب کنید:`,
     [
-      [{ text: '🏪 دریافت حضوری (رایگان)', callback_data: 'delivery_pickup' }],
-      [{ text: '🛵 دریافت با پیک', callback_data: 'delivery_delivery' }],
+      [{ text: '🏪 دریافت حضوری (رایگان)', callback_data: 'delivery_pickup', style: 'primary' }],
+      [{ text: '🛵 دریافت با پیک', callback_data: 'delivery_delivery', style: 'primary' }],
       CANCEL_ROW
     ]
   );
@@ -360,7 +360,7 @@ async function sendAddressChoice(ctx: TelegramContext) {
       text: `📍 ${address.slice(0, 42)}`,
       callback_data: `checkout_saved_address_${addresses.length - 1 - index}`
     }])),
-    [{ text: '➕ ثبت آدرس جدید', callback_data: 'checkout_new_address' }],
+    [{ text: '➕ ثبت آدرس جدید', callback_data: 'checkout_new_address', style: 'primary' }],
     CANCEL_ROW
   ];
   await tgSend(ctx, '🏠 <b>انتخاب آدرس تحویل:</b>\n\nیک آدرس از قبل ثبت‌شده را انتخاب کنید یا آدرس جدید وارد کنید:', buttons);
@@ -370,7 +370,7 @@ async function offerRestart(ctx: TelegramContext): Promise<boolean> {
   const cart = ctx.userCarts.get(ctx.chatId) || [];
   if (cart.length === 0) {
     await tgSend(ctx, '🛒 سبد خرید شما خالی است یا جریان قبلی به پایان رسیده است.\n\nلطفاً دوباره از منوی محصولات سفارش خود را شروع کنید.', [
-      [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories' }]
+      [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]
     ]);
   } else {
     await tgSend(ctx, '⏳ جریان پرداخت قبلی منقضی شده است. در حال آماده‌سازی دوبارهٔ تسویه‌حساب…');
@@ -552,8 +552,8 @@ async function finishRegistration(ctx: TelegramContext) {
   ctx.userStates.set(ctx.chatId, state);
 
   await tgSend(ctx, summary, [
-    [{ text: '💵 پرداخت در محل', callback_data: 'payment_cash_on_delivery' }],
-    [{ text: '💳 پرداخت هم اکنون', callback_data: 'payment_online' }],
+    [{ text: '💵 پرداخت در محل', callback_data: 'payment_cash_on_delivery', style: 'success' }],
+    [{ text: '💳 پرداخت هم اکنون', callback_data: 'payment_online', style: 'success' }],
     CANCEL_ROW
   ]);
 }
@@ -632,7 +632,7 @@ async function createOrder(ctx: TelegramContext) {
       cardHolder: ctx.botSettings.cardHolder || '---',
     });
     ctx.userStates.set(ctx.chatId, { mode: 'waiting_for_receipt', orderId: newOrder.id });
-    await tgSend(ctx, confirmText, [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]]);
+    await tgSend(ctx, confirmText, [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]]);
     return;
   }
 
@@ -642,7 +642,7 @@ async function createOrder(ctx: TelegramContext) {
   });
 
   await tgSend(ctx, confirmText, [
-    [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }],
-    [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]
+    [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }],
+    [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'primary' }]
   ]);
 }

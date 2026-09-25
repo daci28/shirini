@@ -1327,8 +1327,8 @@ async function startServer() {
             parse_mode: 'HTML',
             reply_markup: approved ? undefined : {
               inline_keyboard: [
-                [{ text: '📷 ارسال فیش جدید', callback_data: `order_reupload_receipt_${order.id}` }],
-                [{ text: '💬 پشتیبانی', callback_data: 'support_send' }],
+                [{ text: '📷 ارسال فیش جدید', callback_data: `order_reupload_receipt_${order.id}`, style: 'primary' }],
+                [{ text: '💬 پشتیبانی', callback_data: 'support_send', style: 'primary' }],
               ],
             }
           })
@@ -1456,7 +1456,7 @@ async function startServer() {
                     + `🔖 کد سفارش: <code>${escapeTelegramHtml(order.orderNumber)}</code>\n\n`
                     + `چون تا ${minutes} دقیقه فیش واریزی ارسال نشد، این سفارش به‌صورت خودکار لغو شد.\n`
                     + `در صورت تمایل می‌توانید دوباره سفارش ثبت کنید.`,
-                  reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }]] },
+                  reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories', style: 'primary' }]] },
                 }),
               }).catch((err) => console.error('[orders:expiry] could not notify customer:', err));
             }
@@ -1948,8 +1948,8 @@ async function startServer() {
         const followUp = '<i>در صورت نیاز به توضیحات بیشتر می‌توانید پاسخ دهید یا بیخیال شوید.</i>';
         const replyKeyboard = {
           inline_keyboard: [
-            [{ text: '💬 پاسخ به این تیکت', callback_data: `reply_ticket_${supportTickets[ticketIndex].id}` }],
-            [{ text: '✅ بیخیال', callback_data: 'back_to_main' }]
+            [{ text: '💬 پاسخ به این تیکت', callback_data: `reply_ticket_${supportTickets[ticketIndex].id}`, style: 'primary' }],
+            [{ text: '✅ بیخیال', callback_data: 'back_to_main', style: 'danger' }]
           ]
         };
 
@@ -2382,7 +2382,7 @@ async function startServer() {
             text: `🎂 <b>اعلام قیمت سفارش کیک/شیرینی دلخواه (${order.orderNumber}):</b>\n\nسلام ${order.customerName} عزیز، طرح سفارشی شما توسط سرقناد بررسی و قیمت‌گذاری شد:\n\n💰 <b>مبلغ کل سفارش:</b> <b>${order.finalPrice.toLocaleString('fa-IR')} تومان</b>\n💳 <b>مبلغ بیعانه جهت شروع پخت:</b> <b>${order.prepaymentAmount.toLocaleString('fa-IR')} تومان</b>\n${messageToCustomer ? `\n📝 <b>پیام قناد:</b>\n${messageToCustomer}\n` : ''}\n👇 در صورت تمایل به خرید، روی دکمه زیر کلیک کنید:`,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '✅ ثبت سفارش', callback_data: `custom_order_register_${order.id}` }]
+              [{ text: '✅ ثبت سفارش', callback_data: `custom_order_register_${order.id}`, style: 'success' }]
             ]}
           })
         });
@@ -2615,7 +2615,7 @@ async function startServer() {
             text,
             parse_mode: 'HTML',
             reply_markup: approved ? undefined : {
-              inline_keyboard: [[{ text: '📷 ارسال فیش جدید', callback_data: `custom_order_reupload_receipt_${order.id}` }]],
+              inline_keyboard: [[{ text: '📷 ارسال فیش جدید', callback_data: `custom_order_reupload_receipt_${order.id}`, style: 'primary' }]],
             },
           }),
         });
@@ -2750,10 +2750,10 @@ async function startServer() {
     && !invoice.payments.some((payment) => payment.status === 'submitted')
   );
   const buildCustomerInvoiceKeyboard = (invoice: Invoice) => {
-    const mainMenuButton = { text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main' };
+    const mainMenuButton = { text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' as const };
     if (!isManualInvoicePayable(invoice)) return [[mainMenuButton]];
     return [
-      [{ text: '💳 پرداخت فاکتور', callback_data: `invoice_payment_${invoice.id}` }],
+      [{ text: '💳 پرداخت فاکتور', callback_data: `invoice_payment_${invoice.id}`, style: 'success' as const }],
       [mainMenuButton],
     ];
   };
@@ -2859,10 +2859,10 @@ async function startServer() {
           reason: safeReviewNote ? `\n📌 <b>دلیل:</b> ${escapeTelegramHtml(safeReviewNote)}` : '',
         });
     const buttons = approved
-      ? [[{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main' }]]
+      ? [[{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]]
       : [
-        [{ text: '📷 ارسال فیش جدید', callback_data: `invoice_payment_${invoice.id}` }],
-        [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main' }],
+        [{ text: '📷 ارسال فیش جدید', callback_data: `invoice_payment_${invoice.id}`, style: 'primary' }],
+        [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
       ];
     try {
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -3420,8 +3420,8 @@ async function startServer() {
         const replyMarkup = ticket
           ? {
               inline_keyboard: [
-                [{ text: '💬 پاسخ به این پیام', callback_data: `reply_ticket_${ticket.id}` }],
-                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }],
+                [{ text: '💬 پاسخ به این پیام', callback_data: `reply_ticket_${ticket.id}`, style: 'primary' }],
+                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
               ],
             }
           : undefined;
@@ -4571,7 +4571,7 @@ async function startServer() {
                 + `🔖 کد سفارش: <code>${escapeTelegramHtml(order.orderNumber)}</code>\n\n`
                 + `چون تا ${minutes} دقیقه فیش واریزی ارسال نشد، این سفارش به‌صورت خودکار لغو شد.\n`
                 + `در صورت تمایل می‌توانید دوباره سفارش ثبت کنید.`,
-              reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories', style: 'primary' }]] },
             }),
           }).catch((err) => console.error('[orders:expiry] could not notify customer:', err));
         }
@@ -5307,8 +5307,8 @@ async function startServer() {
               parse_mode: 'HTML',
               text: '⚠️ متأسفیم، در پردازش این مرحله مشکلی پیش آمد.\n\nلطفاً دوباره از سبد خرید اقدام کنید؛ اگر سبد خالی شده، محصولات را یک‌بار دیگر انتخاب کنید.',
               reply_markup: { inline_keyboard: [
-                [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' }],
-                [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories' }],
+                [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }],
+                [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }],
               ] },
             }),
           });
@@ -5416,6 +5416,7 @@ async function startServer() {
     buttons.push([{
       text: retry ? '🔄 بررسی دوباره' : '✅ عضو شدم، بررسی کن',
       callback_data: 'check_required_channels',
+      style: 'success',
     } as any]);
 
     const text = tmsg(
@@ -5455,7 +5456,7 @@ async function startServer() {
     const rulesText = (botSettings.storeRulesText || DEFAULT_STORE_RULES_TEXT)
       .replace(/\{storeName\}/g, botSettings.storeName || 'فروشگاه');
     const buttonText = botSettings.storeRulesButtonText || '✅ قوانین را مطالعه کرده و موافقم';
-    const inlineKeyboard = [[{ text: buttonText, callback_data: 'accept_store_rules' }]];
+    const inlineKeyboard = [[{ text: buttonText, callback_data: 'accept_store_rules', style: 'success' }]];
 
     const displayMode = botSettings.storeRulesDisplayMode || 'all';
     const hasImage = Boolean(botSettings.storeRulesImage && botSettings.storeRulesImage.trim());
@@ -5538,17 +5539,17 @@ async function startServer() {
     const storeName = botSettings.storeName || 'فروشگاه آنلاین';
     const welcomeMsg = tmsg('welcomeMessage', { storeName });
     const inlineKeyboard: any[][] = [
-      [{ text: '🍰 منوی محصولات و سفارش آنلاین', callback_data: 'menu_categories' }],
-      [{ text: '🎨 محصول سفارشی شما', callback_data: 'custom_product_start' }],
-      [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' }],
-      [{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order' }],
-      [{ text: '👤 پروفایل من', callback_data: 'my_profile' }],
-      [{ text: '📍 آدرس و اطلاعات تماس', callback_data: 'contact_info' }],
-      [{ text: '💬 ارسال پیام به پشتیبانی', callback_data: 'support_send' }],
-      [{ text: '📋 مشاهده تیکت‌های من', callback_data: 'my_tickets' }],
+      [{ text: '🍰 منوی محصولات و سفارش آنلاین', callback_data: 'menu_categories', style: 'primary' }],
+      [{ text: '🎨 محصول سفارشی شما', callback_data: 'custom_product_start', style: 'primary' }],
+      [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }],
+      [{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order', style: 'primary' }],
+      [{ text: '👤 پروفایل من', callback_data: 'my_profile', style: 'primary' }],
+      [{ text: '📍 آدرس و اطلاعات تماس', callback_data: 'contact_info', style: 'primary' }],
+      [{ text: '💬 ارسال پیام به پشتیبانی', callback_data: 'support_send', style: 'primary' }],
+      [{ text: '📋 مشاهده تیکت‌های من', callback_data: 'my_tickets', style: 'primary' }],
     ];
     if (isTelegramAdmin(String(from?.id ?? chatId))) {
-      inlineKeyboard.push([{ text: '👨‍🍳 پنل مدیریت', callback_data: 'admin_panel' }]);
+      inlineKeyboard.push([{ text: '👨‍🍳 پنل مدیریت', callback_data: 'admin_panel', style: 'primary' }]);
     }
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
@@ -5613,9 +5614,9 @@ async function startServer() {
           }),
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: [
-            [{ text: '💵 پرداخت در محل', callback_data: `custom_order_cash_${order.id}` }],
-            [{ text: '💳 پرداخت هم اکنون', callback_data: `custom_order_online_${order.id}` }],
-            [{ text: '❌ انصراف', callback_data: 'back_to_main' }],
+            [{ text: '💵 پرداخت در محل', callback_data: `custom_order_cash_${order.id}`, style: 'success' }],
+            [{ text: '💳 پرداخت هم اکنون', callback_data: `custom_order_online_${order.id}`, style: 'success' }],
+            [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
           ] },
         }),
       });
@@ -5807,8 +5808,8 @@ async function startServer() {
               parse_mode: 'HTML',
               text: `✅ آدرس جدید به پروفایل شما اضافه شد.\n\n<b>آدرس‌های شما:</b>\n${(customer.addresses || []).map((a, i) => `${i + 1}. ${a}`).join('\n')}`,
               reply_markup: { inline_keyboard: [
-                [{ text: '👤 مشاهده پروفایل', callback_data: 'my_profile' }],
-                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }],
+                [{ text: '👤 مشاهده پروفایل', callback_data: 'my_profile', style: 'primary' }],
+                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
               ] }
             })
           });
@@ -5836,7 +5837,7 @@ async function startServer() {
             userStates.delete(chatId);
             await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: chatId, text: `✅ <b>${qty} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty}`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🛒 سبد خرید', callback_data: 'view_cart' }], [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories' }]] } })
+              body: JSON.stringify({ chat_id: chatId, text: `✅ <b>${qty} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty}`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' }], [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }]] } })
             });
           }
           return;
@@ -5862,7 +5863,7 @@ async function startServer() {
             userStates.delete(chatId);
             await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: chatId, text: `✅ <b>${qty} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty}`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart' }], [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories' }]] } })
+              body: JSON.stringify({ chat_id: chatId, text: `✅ <b>${qty} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty}`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart', style: 'success' }], [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }]] } })
             });
           }
           return;
@@ -5895,7 +5896,7 @@ async function startServer() {
               chat_id: chatId,
               text: '✅ نام ثبت شد.\n\n📞 <b>مرحله ۲ از ۳:</b> لطفاً <b>شماره تلفن</b> خود را وارد کنید:',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] }
             })
           });
           return;
@@ -5919,7 +5920,7 @@ async function startServer() {
               chat_id: chatId,
               text: '✅ شماره تلفن ثبت شد.\n\n🏠 <b>مرحله ۳ از ۳:</b> لطفاً <b>آدرس دقیق تحویل</b> را وارد کنید:',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] }
             })
           });
           return;
@@ -5984,7 +5985,7 @@ async function startServer() {
               text: `✅ ویژگی‌ها ثبت شد.\n\n📸 حالا لطفاً <b>عکس یا عکس‌های نمونه</b> محصول را ارسال کنید (اختیاری):\n\nمی‌توانید تا <b>۱۰ تصویر</b> (مدل، طرح، تم رنگی، تزیین و…) یکی پس از دیگری بفرستید؛ پس از هر عکس می‌توانید عکس بعدی را بفرستید یا «ثبت عکس‌ها» را بزنید.\n\n<i>(اگر عکسی ندارید، روی دکمه زیر کلیک کنید)</i>`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: '⏭️ رد شدن (بدون عکس)', callback_data: 'custom_product_skip_photo' }]
+                [{ text: '⏭️ رد شدن (بدون عکس)', callback_data: 'custom_product_skip_photo', style: 'primary' }]
               ]}
             })
           });
@@ -6000,8 +6001,8 @@ async function startServer() {
               text: `📸 برای ثبت تصاویر مدنظرتان، عکس‌ها را <b>یکی‌یکی در همین چت</b> بفرستید.${photos.length ? `\nتاکنون <b>${photos.length.toLocaleString('fa-IR')}</b> عکس دریافت شده است.` : ''}\n\nپس از اتمام، دکمه «✅ ثبت عکس‌ها» را بزنید.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                ...(photos.length ? [{ text: '✅ ثبت عکس‌ها و ادامه', callback_data: 'custom_product_done_photos' }] : []),
-                [{ text: '⏭️ بدون عکس ادامه بده', callback_data: 'custom_product_skip_photo' }],
+                ...(photos.length ? [{ text: '✅ ثبت عکس‌ها و ادامه', callback_data: 'custom_product_done_photos', style: 'success' }] : []),
+                [{ text: '⏭️ بدون عکس ادامه بده', callback_data: 'custom_product_skip_photo', style: 'primary' }],
               ]}
             })
           });
@@ -6033,7 +6034,7 @@ async function startServer() {
                 chat_id: chatId,
                 text: '⚠️ امکان ثبت این فیش وجود ندارد؛ فاکتور یافت نشد یا قبلاً تسویه شده است.',
                 parse_mode: 'HTML',
-                reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+                reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
               }),
             });
             return;
@@ -6049,7 +6050,7 @@ async function startServer() {
               chat_id: chatId,
               text: `✅ <b>فیش واریزی شما برای فاکتور ${escapeTelegramHtml(invoice.invoiceNumber)} با موفقیت دریافت شد!</b>\n\nپس از بررسی و تأیید توسط مدیریت قنادی، وضعیت فاکتور به‌روزرسانی خواهد شد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),
           });
           return;
@@ -6087,8 +6088,8 @@ async function startServer() {
                 text: tmsg('customPrepaymentAckMessage'),
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [
-                  [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }],
-                  [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]
+                  [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }],
+                  [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
                 ]}
               })
             });
@@ -6124,8 +6125,8 @@ async function startServer() {
                 : `✅ <b>${count.toLocaleString('fa-IR')}</b> عکس دریافت شد.\n\n📸 اگر مدل یا طرح دیگری هم دارید، <b>همین حالا عکس بعدی</b> را بفرستید.\nپس از اتمام، دکمه «✅ ثبت عکس‌ها و ادامه» را بزنید.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: '✅ ثبت عکس‌ها و ادامه', callback_data: 'custom_product_done_photos' }],
-                atLimit ? [{ text: '❌ انصراف', callback_data: 'back_to_main' }] : [{ text: '⏭️ بدون عکس بیشتر ادامه بده', callback_data: 'custom_product_skip_photo' }],
+                [{ text: '✅ ثبت عکس‌ها و ادامه', callback_data: 'custom_product_done_photos', style: 'success' }],
+                atLimit ? [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }] : [{ text: '⏭️ بدون عکس بیشتر ادامه بده', callback_data: 'custom_product_skip_photo', style: 'primary' }],
               ]}
             })
           });
@@ -6170,8 +6171,8 @@ async function startServer() {
                 : `✅ <b>${supportPhotoCount.toLocaleString('fa-IR')}</b> تصویر دریافت شد.\n\n📸 اگر تصویر دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت نهایی تیکت» را بزنید.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: '✅ ثبت نهایی تیکت', callback_data: 'support_finalize' }],
-                [{ text: '❌ انصراف', callback_data: 'back_to_main' }]
+                [{ text: '✅ ثبت نهایی تیکت', callback_data: 'support_finalize', style: 'success' }],
+                [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
               ]}
             })
           });
@@ -6211,8 +6212,8 @@ async function startServer() {
                   : `✅ <b>${replyPhotoCount.toLocaleString('fa-IR')}</b> عکس دریافت شد.\n\n📸 اگر عکس دیگری هم دارید، همین حالا بفرستید.\nپس از اتمام، «✅ ثبت و ارسال پاسخ» را بزنید.`,
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: [
-                  [{ text: '✅ ثبت و ارسال پاسخ', callback_data: 'reply_ticket_photo_done' }],
-                  [{ text: '❌ انصراف', callback_data: 'back_to_main' }]
+                  [{ text: '✅ ثبت و ارسال پاسخ', callback_data: 'reply_ticket_photo_done', style: 'success' }],
+                  [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
                 ]}
               })
             });
@@ -6252,7 +6253,7 @@ async function startServer() {
                   ? '✅ فیش واریزی جدید با موفقیت دریافت شد و جایگزین فیش قبلی گردید!\n\nسفارش شما دوباره در انتظار بررسی ادمین قرار گرفت.'
                   : tmsg('receiptAckMessage'),
                 parse_mode: 'HTML',
-                reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]] }
+                reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order', style: 'primary' }]] }
               })
             });
           } else {
@@ -6264,7 +6265,7 @@ async function startServer() {
                 chat_id: chatId,
                 text: '⚠️ امکان ثبت فیش برای این سفارش وجود ندارد (سفارش لغو/تحویل شده، پرداخت در محل، یا فیش قبلاً تأیید شده است).',
                 parse_mode: 'HTML',
-                reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]] }
+                reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات من', callback_data: 'track_order', style: 'primary' }]] }
               })
             });
           }
@@ -6287,7 +6288,7 @@ async function startServer() {
               chat_id: chatId,
               text: `✅ <b>فیش واریزی شما برای فاکتور ${escapeTelegramHtml(pendingInvoice.invoiceNumber)} با موفقیت دریافت شد!</b>\n\nپس از بررسی و تأیید توسط مدیریت قنادی، وضعیت فاکتور به‌روزرسانی خواهد شد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),
           });
           return;
@@ -6321,7 +6322,7 @@ async function startServer() {
               chat_id: chatId,
               text: `✅ <b>فیش واریزی شما برای سفارش ${escapeTelegramHtml(pendingOrder.orderNumber)} دریافت شد!</b>\n\nپس از بررسی و تأیید ادمین، مراحل آماده‌سازی و ارسال انجام خواهد شد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] }
             })
           });
           return;
@@ -6355,7 +6356,7 @@ async function startServer() {
               chat_id: chatId,
               text: `✅ <b>فیش بیعانه سفارش دلخواه (${escapeTelegramHtml(pendingCustom.orderNumber)}) دریافت شد!</b>\n\nپس از تأیید واریزی توسط قناد، پخت کیک شما آغاز خواهد شد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] }
             })
           });
           return;
@@ -6369,7 +6370,7 @@ async function startServer() {
             chat_id: chatId,
             text: '📸 تصویر شما دریافت شد.\n\nچنانچه می‌خواهید فیش واریزی ارسال کنید، لطفاً از بخش «📦 پیگیری سفارشات» وارد شده و سفارش مربوطه را انتخاب نمایید.',
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] }
           })
         });
         return;
@@ -6493,7 +6494,7 @@ async function startServer() {
               chat_id: chatId,
               text: '❌ فاکتور مورد نظر یافت نشد.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),
           });
           return;
@@ -6508,7 +6509,7 @@ async function startServer() {
               chat_id: chatId,
               text: 'ℹ️ این فاکتور قبلاً تسویه شده است و نیازی به پرداخت ندارد.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),
           });
           return;
@@ -6523,7 +6524,7 @@ async function startServer() {
               chat_id: chatId,
               text: '⚠️ اطلاعات کارت پرداخت هنوز توسط فروشگاه در تنظیمات پنل ثبت نشده است. لطفاً کمی بعد دوباره تلاش کنید.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),
           });
           return;
@@ -6557,7 +6558,7 @@ async function startServer() {
             chat_id: chatId,
             text: paymentText,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] },
+            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] },
           }),
         });
         return;
@@ -6578,7 +6579,7 @@ async function startServer() {
               chat_id: chatId,
               text: '❌ این سفارش یافت نشد یا به حساب دیگری تعلق دارد.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order', style: 'primary' }]] },
             }),
           });
           return;
@@ -6591,7 +6592,7 @@ async function startServer() {
               chat_id: chatId,
               text: `ℹ️ سفارش <code>${escapeTelegramHtml(order.orderNumber)}</code> پرداخت در محل است و نیازی به ارسال فیش ندارد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order', style: 'primary' }]] },
             }),
           });
           return;
@@ -6604,7 +6605,7 @@ async function startServer() {
               chat_id: chatId,
               text: 'ℹ️ این سفارش در وضعیت پرداخت نیست و فیش جدیدی برای آن پذیرفته نمی‌شود.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order', style: 'primary' }]] },
             }),
           });
           return;
@@ -6619,7 +6620,7 @@ async function startServer() {
               chat_id: chatId,
               text: `⏳ فیش سفارش <code>${escapeTelegramHtml(order.orderNumber)}</code> قبلاً ارسال شده و در انتظار تأیید ادمین است. پس از بررسی، نتیجه به شما اعلام می‌شود.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات من', callback_data: 'track_order', style: 'primary' }]] },
             }),
           });
           return;
@@ -6634,7 +6635,7 @@ async function startServer() {
               chat_id: chatId,
               text: '⚠️ اطلاعات کارت پرداخت هنوز توسط فروشگاه ثبت نشده است. لطفاً کمی بعد دوباره تلاش کنید یا با پشتیبانی در تماس باشید.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '💬 پشتیبانی', callback_data: 'support_send' }]] },
+              reply_markup: { inline_keyboard: [[{ text: '💬 پشتیبانی', callback_data: 'support_send', style: 'primary' }]] },
             }),
           });
           return;
@@ -6660,7 +6661,7 @@ async function startServer() {
             chat_id: chatId,
             text: receiptText,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] },
+            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] },
           }),
         });
         return;
@@ -6684,8 +6685,8 @@ async function startServer() {
       if (data === 'admin_backup_download' || data === 'admin_create_instant_snapshot') {
         const wantsFile = data === 'admin_backup_download';
         const backupMenu = [
-          [{ text: '💾 منوی بکاپ', callback_data: 'admin_backup' }],
-          [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }],
+          [{ text: '💾 منوی بکاپ', callback_data: 'admin_backup', style: 'primary' }],
+          [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }],
         ];
 
         try {
@@ -6902,9 +6903,9 @@ async function startServer() {
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
-                [{ text: '➕ افزودن آدرس جدید', callback_data: 'profile_add_address' }],
-                [{ text: '💬 پشتیبانی', callback_data: 'support_send' }],
-                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main' }],
+                [{ text: '➕ افزودن آدرس جدید', callback_data: 'profile_add_address', style: 'primary' }],
+                [{ text: '💬 پشتیبانی', callback_data: 'support_send', style: 'primary' }],
+                [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
               ]
             }
           })
@@ -6918,7 +6919,7 @@ async function startServer() {
             chat_id: chatId,
             text: `🏠 لطفاً <b>آدرس جدید</b> خود را کامل بنویسید (خیابان، کوچه، پلاک و کد پستی در صورت امکان):`,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] }
           })
         });
       } else if (data === 'contact_info') {
@@ -6931,7 +6932,7 @@ async function startServer() {
             text,
             parse_mode: 'HTML',
             reply_markup: {
-              inline_keyboard: [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]]
+              inline_keyboard: [[{ text: '🔙 بازگشت', callback_data: 'back_to_main', style: 'danger' }]]
             }
           })
         });
@@ -6939,8 +6940,8 @@ async function startServer() {
       } else if (data === 'custom_product_start') {
         userStates.set(chatId, { mode: 'custom_product_category' });
         const categories = ['🎂 کیک تولد و مناسبتی', '🧁 کاپ‌کیک و مافین', '🍰 شیرینی تر', '🍪 شیرینی خشک', '🍮 دسر و پودینگ', '🥐 نان و کروسان', '🍫 شکلات و ترافل', '🎁 سایر'];
-        const buttons = categories.map(cat => [{ text: cat, callback_data: `custom_cat_${cat}` }]);
-        buttons.push([{ text: '❌ انصراف', callback_data: 'back_to_main' }]);
+        const buttons = categories.map(cat => [{ text: cat, callback_data: `custom_cat_${cat}`, style: 'primary' }]);
+        buttons.push([{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]);
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -6998,8 +6999,8 @@ async function startServer() {
             text: confirmText,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit' }],
-              [{ text: '❌ انصراف', callback_data: 'back_to_main' }]
+              [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit', style: 'success' }],
+              [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
             ]}
           })
         });
@@ -7017,8 +7018,8 @@ async function startServer() {
               text: '📸 هنوز عکسی دریافت نشده است. لطفاً تصویر نمونه را بفرستید یا دکمه «بدون عکس ادامه بده» را بزنید.',
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: '⏭️ بدون عکس ادامه بده', callback_data: 'custom_product_skip_photo' }],
-                [{ text: '❌ انصراف', callback_data: 'back_to_main' }],
+                [{ text: '⏭️ بدون عکس ادامه بده', callback_data: 'custom_product_skip_photo', style: 'primary' }],
+                [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
               ]}
             })
           });
@@ -7042,8 +7043,8 @@ async function startServer() {
             text: confirmText,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit' }],
-              [{ text: '❌ انصراف', callback_data: 'back_to_main' }]
+              [{ text: '✅ تایید و ارسال', callback_data: 'custom_product_submit', style: 'success' }],
+              [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
             ]}
           })
         });
@@ -7106,8 +7107,8 @@ async function startServer() {
             text: tmsg('customOrderSubmittedMessage', { orderNumber: newCustomOrder.orderNumber }),
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }],
-              [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]
+              [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }],
+              [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
             ]}
           })
         });
@@ -7121,7 +7122,7 @@ async function startServer() {
             chat_id: chatId,
             text: 'ℹ️ تعیین تاریخ و ساعت تحویل در ربات انجام نمی‌شود؛ پس از تأیید سفارش، زمان تحویل هماهنگ خواهد شد.',
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]] },
+            reply_markup: { inline_keyboard: [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
           }),
         });
       } else if (data.startsWith('custom_order_reupload_receipt_')) {
@@ -7141,7 +7142,7 @@ async function startServer() {
             chat_id: chatId,
             text: `📷 <b>ارسال مجدد فیش بیعانه</b>\n\n💰 مبلغ بیعانه: <b>${order.prepaymentAmount?.toLocaleString() || '---'} تومان</b>\n💳 <b>شماره کارت:</b>\n<code>${botSettings.cardNumber}</code>\n👤 <b>به نام:</b> ${botSettings.cardHolder}\n\nلطفاً عکس فیش صحیح را ارسال کنید. فیش جدید نیز ابتدا توسط ادمین بررسی خواهد شد.`,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] }
           })
         });
       } else if (data.startsWith('custom_order_addr_')) {
@@ -7163,7 +7164,7 @@ async function startServer() {
               chat_id: chatId,
               text: '🏠 لطفاً <b>آدرس دقیق تحویل</b> را وارد کنید:',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]] }
             })
           });
           return;
@@ -7222,9 +7223,10 @@ async function startServer() {
           const addressButtons = [
             ...knownAddresses.slice(-5).reverse().map((address: string, index: number) => ([{
               text: `📍 ${address.slice(0, 42)}`,
-              callback_data: `custom_order_addr_${knownAddresses.length - 1 - index}`
+              callback_data: `custom_order_addr_${knownAddresses.length - 1 - index}`,
+              style: 'primary'
             }])),
-            [{ text: '➕ ثبت آدرس جدید', callback_data: 'custom_order_addr_new' }]
+            [{ text: '➕ ثبت آدرس جدید', callback_data: 'custom_order_addr_new', style: 'primary' }]
           ];
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
@@ -7296,8 +7298,8 @@ async function startServer() {
             }),
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order' }],
-              [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]
+              [{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }],
+              [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
             ]}
           })
         });
@@ -7336,7 +7338,7 @@ async function startServer() {
             }),
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '❌ انصراف', callback_data: 'back_to_main' }]
+              [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }]
             ]}
           })
         });
@@ -7359,7 +7361,7 @@ async function startServer() {
             reply_markup: {
               inline_keyboard: [
                 [{ text: '🌐 ورود به پنل وب', url: webUrl }],
-                [{ text: '🔙 بازگشت به پنل ادمین', callback_data: 'admin_panel' }]
+                [{ text: '🔙 بازگشت به پنل ادمین', callback_data: 'admin_panel', style: 'danger' }]
               ]
             }
           })
@@ -7383,15 +7385,15 @@ async function startServer() {
         const categoryButtons: any[][] = [];
         const labelFor = (cat: string) => `${cat} (${fa(countsByCategory.get(cat) || 0)})`;
         for (let i = 0; i < categoryOrder.length; i += 2) {
-          const row: any[] = [{ text: labelFor(categoryOrder[i]), callback_data: `cat_${categoryOrder[i]}` }];
-          if (categoryOrder[i + 1]) row.push({ text: labelFor(categoryOrder[i + 1]), callback_data: `cat_${categoryOrder[i + 1]}` });
+          const row: any[] = [{ text: labelFor(categoryOrder[i]), callback_data: `cat_${categoryOrder[i]}`, style: 'primary' }];
+          if (categoryOrder[i + 1]) row.push({ text: labelFor(categoryOrder[i + 1]), callback_data: `cat_${categoryOrder[i + 1]}`, style: 'primary' });
           categoryButtons.push(row);
         }
         categoryButtons.push([
-          { text: `🌟 همه محصولات (${fa(availableProducts.length)})`, callback_data: 'cat_all' }
+          { text: `🌟 همه محصولات (${fa(availableProducts.length)})`, callback_data: 'cat_all', style: 'primary' }
         ]);
         categoryButtons.push([
-          { text: '🔙 منوی اصلی', callback_data: 'back_to_main' }
+          { text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }
         ]);
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
@@ -7415,7 +7417,7 @@ async function startServer() {
               chat_id: chatId,
               text: `در دسته‌بندی <b>${selectedCategory === 'all' ? 'همه محصولات' : selectedCategory}</b> در حال حاضر محصول فعالی وجود ندارد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت به دسته‌ها', callback_data: 'menu_categories' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت به دسته‌ها', callback_data: 'menu_categories', style: 'danger' }]] }
             })
           });
           return;
@@ -7435,8 +7437,8 @@ async function startServer() {
             : `<b>${prod.price.toLocaleString()}</b>`;
           const caption = `🎂 <b>${prod.name}</b>\n\n💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit}\n📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود' : '🔴 ناموجود'}\n\n📝 ${prod.description || ''}`;
           const buttons: any[][] = [
-            [{ text: `➕ ۱ ${prod.unit}`, callback_data: `add_qty_${prod.id}_1` }, { text: `➕ ۲ ${prod.unit}`, callback_data: `add_qty_${prod.id}_2` }],
-            [{ text: '🛒 سبد خرید', callback_data: 'view_cart' }, { text: '🔙 دسته‌ها', callback_data: 'menu_categories' }]
+            [{ text: `➕ ۱ ${prod.unit}`, callback_data: `add_qty_${prod.id}_1`, style: 'success' }, { text: `➕ ۲ ${prod.unit}`, callback_data: `add_qty_${prod.id}_2`, style: 'success' }],
+            [{ text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' }, { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'danger' }]
           ];
           await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
             method: 'POST',
@@ -7488,8 +7490,8 @@ async function startServer() {
             text: `✅ <b>${quantity.toLocaleString('fa-IR')} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty.toLocaleString('fa-IR')}`,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart' }],
-              [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories' }]
+              [{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart', style: 'success' }],
+              [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }]
             ] }
           })
         });
@@ -7517,7 +7519,7 @@ async function startServer() {
               chat_id: chatId,
               text: '🛒 <b>سبد خرید شما خالی است!</b>\n\nبرای سفارش از منوی محصولات استفاده کنید.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
             })
           });
           return;
@@ -7544,10 +7546,10 @@ async function startServer() {
             text: cartText,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: [
-              [{ text: '💳 ثبت سفارش و پرداخت', callback_data: 'checkout_start' }],
-              [{ text: '🗑️ خالی کردن سبد', callback_data: 'clear_cart' }],
-              [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories' }],
-              [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main' }]
+              [{ text: '💳 ثبت سفارش و پرداخت', callback_data: 'checkout_start', style: 'success' }],
+              [{ text: '🗑️ خالی کردن سبد', callback_data: 'clear_cart', style: 'danger' }],
+              [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }],
+              [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
             ]}
           })
         });
@@ -7560,7 +7562,7 @@ async function startServer() {
             chat_id: chatId,
             text: '🗑️ سبد خرید شما خالی شد.',
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
           })
         });
       } else if (data === 'checkout_start') {
@@ -7587,8 +7589,8 @@ async function startServer() {
               parse_mode: 'HTML',
               text: '⚠️ در باز کردن پرداخت مشکلی پیش آمد. لطفاً دوباره از سبد خرید اقدام کنید.',
               reply_markup: { inline_keyboard: [
-                [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart' }],
-                [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories' }]
+                [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }],
+                [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]
               ] }
             })
           }).catch(() => {});
@@ -7615,8 +7617,8 @@ async function startServer() {
             cb.message?.message_id,
             tmsg('noOrdersMessage'),
             [
-              [{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }],
-              [{ text: '🎨 ثبت محصول سفارشی', callback_data: 'custom_product_start' }],
+              [{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories', style: 'primary' }],
+              [{ text: '🎨 ثبت محصول سفارشی', callback_data: 'custom_product_start', style: 'primary' }],
             ],
           );
           return;
@@ -7643,7 +7645,7 @@ async function startServer() {
             callback_data: `track_custom_${customOrder.id}`,
           }]);
         }
-        listKeyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
+        listKeyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]);
 
         await replaceTelegramMessage(
           token,
@@ -7663,7 +7665,7 @@ async function startServer() {
             chatId,
             cb.message?.message_id,
             '❌ این سفارش پیدا نشد.',
-            [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]],
+            [[{ text: '📦 سفارشات من', callback_data: 'track_order', style: 'primary' }]],
           );
           return;
         }
@@ -7672,7 +7674,7 @@ async function startServer() {
           chatId,
           cb.message?.message_id,
           formatCustomOrderTrackingMessage(customOrder),
-          [[{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]],
+          [[{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order', style: 'danger' }]],
         );
       } else if (data.startsWith('track_one_')) {
         const orderId = data.replace('track_one_', '');
@@ -7685,7 +7687,7 @@ async function startServer() {
             chatId,
             cb.message?.message_id,
             '❌ این سفارش پیدا نشد.',
-            [[{ text: '📦 سفارشات من', callback_data: 'track_order' }]],
+            [[{ text: '📦 سفارشات من', callback_data: 'track_order', style: 'primary' }]],
           );
           return;
         }
@@ -7728,6 +7730,7 @@ async function startServer() {
           orderKeyboard.push([{
             text: ord.receiptReviewStatus === 'rejected' ? '📷 ارسال فیش جدید' : (ord.paymentReceiptImage ? '📷 ارسال مجدد فیش' : '📷 ارسال فیش واریزی'),
             callback_data: `order_reupload_receipt_${ord.id}`,
+            style: 'primary',
           }]);
           if (ord.receiptReviewStatus === 'rejected') {
             orderText += `\n❌ <b>فیش قبلی تأیید نشد.</b>${ord.receiptReviewReason ? ` دلیل: ${escapeTelegramHtml(ord.receiptReviewReason)}` : ''}\nلطفاً فیش صحیح را با دکمه زیر ارسال کنید.`;
@@ -7737,7 +7740,7 @@ async function startServer() {
         } else if (receiptUnderReview) {
           orderText += `\n⏳ <b>فیش واریزی شما دریافت شده و در انتظار تأیید ادمین است.</b>`;
         }
-        orderKeyboard.push([{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order' }]);
+        orderKeyboard.push([{ text: '📦 بازگشت به سفارشات', callback_data: 'track_order', style: 'danger' }]);
 
         await replaceTelegramMessage(token, chatId, cb.message?.message_id, orderText, orderKeyboard);
       } else if (data === 'admin_orders_list') {
@@ -7749,7 +7752,7 @@ async function startServer() {
               chat_id: chatId,
               text: '📦 هیچ سفارشی ثبت نشده است.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
             })
           });
           return;
@@ -7765,8 +7768,8 @@ async function startServer() {
               text: caption,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: '👩‍🍳 شروع پخت', callback_data: `admin_status_${ord.id}_baking` }, { text: '🛵 ارسال', callback_data: `admin_status_${ord.id}_shipped` }],
-                [{ text: '✅ تحویل شد', callback_data: `admin_status_${ord.id}_delivered` }, { text: '❌ لغو', callback_data: `admin_status_${ord.id}_cancelled` }]
+                [{ text: '👩‍🍳 شروع پخت', callback_data: `admin_status_${ord.id}_baking`, style: 'success' }, { text: '🛵 ارسال', callback_data: `admin_status_${ord.id}_shipped`, style: 'primary' }],
+                [{ text: '✅ تحویل شد', callback_data: `admin_status_${ord.id}_delivered`, style: 'success' }, { text: '❌ لغو', callback_data: `admin_status_${ord.id}_cancelled`, style: 'danger' }]
               ]}
             })
           });
@@ -7787,7 +7790,7 @@ async function startServer() {
               chat_id: chatId,
               text: `✅ وضعیت سفارش ${orders[idx].orderNumber} به <b>${statusLabels[newStatus] || newStatus}</b> تغییر یافت.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات', callback_data: 'admin_orders_list' }], [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '📦 سفارشات', callback_data: 'admin_orders_list', style: 'primary' }], [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
             })
           });
         }
@@ -7801,8 +7804,8 @@ async function startServer() {
               text: '🧁 هیچ محصولی ثبت نشده. از دکمه «➕ افزودن محصول» استفاده کنید.',
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: '➕ افزودن محصول', callback_data: 'admin_add_product' }],
-                [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]
+                [{ text: '➕ افزودن محصول', callback_data: 'admin_add_product', style: 'success' }],
+                [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]
               ]}
             })
           });
@@ -7818,7 +7821,7 @@ async function startServer() {
               text: caption,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [
-                [{ text: prod.isAvailable ? '🔴 ناموجود' : '🟢 موجود', callback_data: `admin_toggle_avail_${prod.id}` }, { text: '🗑️ حذف', callback_data: `admin_delete_prod_${prod.id}` }]
+                [{ text: prod.isAvailable ? '🔴 ناموجود' : '🟢 موجود', callback_data: `admin_toggle_avail_${prod.id}`, style: prod.isAvailable ? 'danger' : 'success' }, { text: '🗑️ حذف', callback_data: `admin_delete_prod_${prod.id}`, style: 'danger' }]
               ]}
             })
           });
@@ -7835,7 +7838,7 @@ async function startServer() {
               chat_id: chatId,
               text: `✅ ${prod.name}: <b>${prod.isAvailable ? '🟢 موجود' : '🔴 ناموجود'}</b>`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }], [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager', style: 'primary' }], [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
             })
           });
         }
@@ -7852,7 +7855,7 @@ async function startServer() {
               chat_id: chatId,
               text: `🗑️ محصول <b>${name}</b> حذف شد.`,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager' }], [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '🧁 محصولات', callback_data: 'admin_products_manager', style: 'primary' }], [{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
             })
           });
         }
@@ -7864,7 +7867,7 @@ async function startServer() {
             chat_id: chatId,
             text: '➕ <b>افزودن محصول جدید</b>\n\nلطفاً <b>نام محصول</b> را ارسال کنید:\n<i>(مثال: کیک شکلاتی بلژیکی)</i>',
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'admin_panel' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف', callback_data: 'admin_panel', style: 'danger' }]] }
           })
         });
       } else if (data === 'admin_discounts_list') {
@@ -7876,7 +7879,7 @@ async function startServer() {
               chat_id: chatId,
               text: '🎟️ هیچ کد تخفیفی ثبت نشده است.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
             })
           });
           return;
@@ -7892,7 +7895,7 @@ async function startServer() {
             chat_id: chatId,
             text,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
           })
         });
       } else if (data === 'admin_customers_manager') {
@@ -7904,7 +7907,7 @@ async function startServer() {
               chat_id: chatId,
               text: '👥 هیچ مشتری‌ای ثبت نشده است.\n\nمشتریان پس از اولین خرید اضافه می‌شوند.',
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+              reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
             })
           });
           return;
@@ -7920,7 +7923,7 @@ async function startServer() {
             chat_id: chatId,
             text,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
           })
         });
       } else if (data === 'admin_sales_stats') {
@@ -7933,7 +7936,7 @@ async function startServer() {
             chat_id: chatId,
             text,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
           })
         });
       } else if (data === 'admin_quick_settings') {
@@ -7945,7 +7948,7 @@ async function startServer() {
             chat_id: chatId,
             text,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel' }]] }
+            reply_markup: { inline_keyboard: [[{ text: '👨‍🍳 منوی ادمین', callback_data: 'admin_panel', style: 'primary' }]] }
           })
         });
       }

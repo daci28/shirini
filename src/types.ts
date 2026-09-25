@@ -627,6 +627,7 @@ export interface TelegramInlineButton {
   callback_data?: string;
   url?: string;
   web_app?: { url: string };
+  style?: 'primary' | 'success' | 'danger';
 }
 
 export interface TelegramMessage {

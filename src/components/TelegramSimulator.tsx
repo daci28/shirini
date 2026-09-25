@@ -62,6 +62,72 @@ interface TelegramSimulatorProps {
   onUpdateSettings?: (newSettings: Partial<BotSettings>) => Promise<void>;
 }
 
+const getFallbackButtonStyle = (text: string): 'primary' | 'success' | 'danger' | undefined => {
+  if (!text) return undefined;
+  const t = text.trim();
+  // 1. Success (green): خرید، سفارش، تأیید، پرداخت، افزودن به سبد، شروع پخت، تحویل، موافقم، عضو شدم
+  if (
+    t.includes('تایید') ||
+    t.includes('تأیید') ||
+    t.includes('پرداخت') ||
+    t.includes('خرید') ||
+    t.includes('افزودن') ||
+    t.includes('ثبت سفارش') ||
+    t.includes('شروع پخت') ||
+    t.includes('تحویل') ||
+    t.includes('موافقم') ||
+    t.includes('عضو شدم') ||
+    (t.includes('موجود') && !t.includes('ناموجود') && !t.includes('غیرفعال'))
+  ) {
+    return 'success';
+  }
+  // 2. Danger (red): لغو، حذف، بازگشت، انصراف، ناموجود، غیرفعال، رد، بیخیال، خالی کردن
+  if (
+    t.includes('لغو') ||
+    t.includes('حذف') ||
+    t.includes('بازگشت') ||
+    t.includes('انصراف') ||
+    t.includes('ناموجود') ||
+    t.includes('غیرفعال') ||
+    t.includes('رد فیش') ||
+    t.includes('رد') ||
+    t.includes('بیخیال') ||
+    t.includes('خالی کردن') ||
+    t.includes('❌') ||
+    t.includes('🗑️') ||
+    t.includes('🔙')
+  ) {
+    return 'danger';
+  }
+  // 3. Primary (blue): منو، دسته‌بندی، پروفایل، پیگیری، تیکت، پشتیبانی، مدیریت، تنظیمات، آمار، بکاپ، فاکتور، ارسال فیش، ورود
+  if (
+    t.includes('منو') ||
+    t.includes('دسته‌بندی') ||
+    t.includes('دسته‌ها') ||
+    t.includes('پروفایل') ||
+    t.includes('پیگیری') ||
+    t.includes('تیکت') ||
+    t.includes('پشتیبانی') ||
+    t.includes('سفارشات') ||
+    t.includes('محصولات') ||
+    t.includes('مدیریت') ||
+    t.includes('تنظیمات') ||
+    t.includes('آمار') ||
+    t.includes('بکاپ') ||
+    t.includes('فاکتور') ||
+    t.includes('ارسال فیش') ||
+    t.includes('ورود') ||
+    t.includes('مشاهده') ||
+    t.includes('سوپرگروه') ||
+    t.includes('تخفیف') ||
+    t.includes('تغییر') ||
+    t.includes('ویرایش')
+  ) {
+    return 'primary';
+  }
+  return undefined;
+};
+
 export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
   products,
   orders,
@@ -2605,29 +2671,62 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
                   </div>
                 </div>
 
-                {/* Glassmorphic Inline Keyboard Buttons */}
+                {/* Glassmorphic / Bot API 9.4 Styled Inline Keyboard Buttons */}
                 {msg.reply_markup?.inline_keyboard && msg.reply_markup.inline_keyboard.length > 0 && (
                   <div className="w-[88%] mt-1.5 space-y-1.5">
                     {msg.reply_markup.inline_keyboard.map((row, rIdx) => (
                       <div key={rIdx} className="flex gap-1.5 w-full">
-                        {row.map((btn, bIdx) => (
-                          <button
-                            key={bIdx}
-                            onClick={() => handleCallbackQuery(btn.callback_data)}
-                            className="flex-1 py-2.5 px-2 rounded-xl text-[11px] sm:text-xs font-semibold text-center transition-all duration-200 backdrop-blur-md bg-white/15 hover:bg-white/25 active:scale-[0.97] border border-white/20 shadow-sm text-slate-100 flex items-center justify-center gap-1 group"
-                            style={{
+                        {row.map((btn, bIdx) => {
+                          const resolvedStyle = btn.style || getFallbackButtonStyle(btn.text);
+                          let btnClass = '';
+                          let inlineStyle: React.CSSProperties = {};
+
+                          if (resolvedStyle === 'success') {
+                            btnClass = 'bg-emerald-600/90 hover:bg-emerald-500 text-white border-emerald-400/40 shadow-emerald-950/30';
+                            inlineStyle = {
+                              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.9) 0%, rgba(5, 150, 105, 0.95) 100%)',
+                              boxShadow: '0 4px 12px 0 rgba(16, 185, 129, 0.3)',
+                              border: '1px solid rgba(110, 231, 183, 0.45)'
+                            };
+                          } else if (resolvedStyle === 'danger') {
+                            btnClass = 'bg-rose-600/90 hover:bg-rose-500 text-white border-rose-400/40 shadow-rose-950/30';
+                            inlineStyle = {
+                              background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.9) 0%, rgba(220, 38, 38, 0.95) 100%)',
+                              boxShadow: '0 4px 12px 0 rgba(239, 68, 68, 0.3)',
+                              border: '1px solid rgba(252, 165, 165, 0.45)'
+                            };
+                          } else if (resolvedStyle === 'primary') {
+                            btnClass = 'bg-sky-600/90 hover:bg-sky-500 text-white border-sky-400/40 shadow-sky-950/30';
+                            inlineStyle = {
+                              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.9) 0%, rgba(2, 132, 199, 0.95) 100%)',
+                              boxShadow: '0 4px 12px 0 rgba(14, 165, 233, 0.3)',
+                              border: '1px solid rgba(125, 211, 252, 0.45)'
+                            };
+                          } else {
+                            // Glassmorphic neutral button
+                            btnClass = 'backdrop-blur-md bg-white/15 hover:bg-white/25 text-slate-100 border-white/20';
+                            inlineStyle = {
                               background: theme === 'dark' 
                                 ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%)' 
                                 : 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.85) 100%)',
                               boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.15)',
                               border: '1px solid rgba(255, 255, 255, 0.2)'
-                            }}
-                          >
-                            <span className="truncate group-hover:text-amber-300 transition-colors">
-                              {btn.text}
-                            </span>
-                          </button>
-                        ))}
+                            };
+                          }
+
+                          return (
+                            <button
+                              key={bIdx}
+                              onClick={() => handleCallbackQuery(btn.callback_data)}
+                              className={`flex-1 py-2.5 px-2 rounded-xl text-[11px] sm:text-xs font-semibold text-center transition-all duration-200 active:scale-[0.97] border shadow-sm flex items-center justify-center gap-1 group ${btnClass}`}
+                              style={inlineStyle}
+                            >
+                              <span className="truncate group-hover:brightness-110 transition-all">
+                                {btn.text}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>

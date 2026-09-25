@@ -177,7 +177,10 @@ async function continueAfterDelivery(ctx: TelegramContext) {
 export async function startCheckout(ctx: TelegramContext) {
   const cart = ctx.userCarts.get(ctx.chatId) || [];
   if (cart.length === 0) {
-    await tgSend(ctx, '🛒 سبد خرید خالی است!', [[{ text: '🍰 منو', callback_data: 'menu_categories', style: 'primary' }]]);
+    await tgSend(ctx, '🛒 سبد خرید خالی است!', [
+      [{ text: '🍰 منو', callback_data: 'menu_categories', style: 'primary' }],
+      [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+    ]);
     return;
   }
 
@@ -392,7 +395,8 @@ async function offerRestart(ctx: TelegramContext): Promise<boolean> {
   const cart = ctx.userCarts.get(ctx.chatId) || [];
   if (cart.length === 0) {
     await tgSend(ctx, '🛒 سبد خرید شما خالی است یا جریان قبلی به پایان رسیده است.\n\nلطفاً دوباره از منوی محصولات سفارش خود را شروع کنید.', [
-      [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]
+      [{ text: '🍰 منوی محصولات', callback_data: 'menu_categories', style: 'primary' }],
+      [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
     ]);
   } else {
     await tgSend(ctx, '⏳ جریان پرداخت قبلی منقضی شده است. در حال آماده‌سازی دوبارهٔ تسویه‌حساب…');

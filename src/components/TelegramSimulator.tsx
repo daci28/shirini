@@ -711,7 +711,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (data === 'clear_cart') {
       setCart([]);
       editBotMessage('🗑️ سبد خرید شما با موفقیت خالی شد.', [
-        [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+        [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }],
+        [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
       ]);
       return;
     }
@@ -720,7 +721,10 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       if (cart.length === 0) {
         editBotMessage(
           '🛒 <b>سبد خرید شما در حال حاضر خالی است!</b>\nبرای انتخاب شیرینی، کیک یا دسرهای خوشمزه روی دکمه زیر کلیک کنید:',
-          [[{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]]
+          [
+            [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+          ]
         );
         return;
       }
@@ -797,7 +801,10 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       if (cart.length === 0) {
         editBotMessage(
           '🛒 <b>سبد خرید شما در حال حاضر خالی است!</b>',
-          [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]]
+          [
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+          ]
         );
         return;
       }
@@ -835,7 +842,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         setCart(newCart);
         if (newCart.length === 0) {
           editBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
-            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
           ]);
         } else {
           // Re-render cart with newCart
@@ -876,7 +884,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         setCart(newCart);
         if (newCart.length === 0) {
           editBotMessage(`🗑️ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
-            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
           ]);
         } else {
           setTimeout(() => handleCallbackQuery('view_cart'), 10);
@@ -895,7 +904,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         setCart(newCart);
         if (newCart.length === 0) {
           editBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
-            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
           ]);
         } else {
           setTimeout(() => handleCallbackQuery('view_cart'), 10);
@@ -1037,7 +1047,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (data === 'checkout_start') {
       if (cart.length === 0) {
         editBotMessage('🛒 سبد خرید شما خالی است! لطفاً ابتدا شیرینی مورد نظرتان را به سبد اضافه کنید.', [
-          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]
+          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }],
+          [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
         ]);
         return;
       }
@@ -1051,7 +1062,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (data === 'view_invoice_preview') {
       if (cart.length === 0) {
         editBotMessage('🛒 سبد خرید شما خالی است.', [
-          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]
+          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }],
+          [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
         ]);
         return;
       }
@@ -1080,7 +1092,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (data === 'confirm_final_order') {
       if (cart.length === 0) {
         editBotMessage('🛒 سبد خرید شما خالی است!', [
-          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]
+          [{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }],
+          [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
         ]);
         return;
       }
@@ -2485,7 +2498,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         setCart(prev => prev.filter(i => i.productId !== prodId));
         if (cart.length <= 1) {
           addBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
-            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
           ]);
         } else {
           addBotMessage(`✅ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.`, [

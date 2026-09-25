@@ -5583,7 +5583,10 @@ async function startServer() {
         chatId,
         messageId,
         '🛒 <b>سبد خرید شما خالی است!</b>\n\nبرای سفارش از منوی محصولات استفاده کنید.',
-        [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]]
+        [
+          [{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }],
+          [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+        ]
       );
       return;
     }
@@ -5969,7 +5972,10 @@ async function startServer() {
                     chat_id: chatId,
                     text: `🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
                     parse_mode: 'HTML',
-                    reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
+                    reply_markup: { inline_keyboard: [
+                      [{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }],
+                      [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+                    ] }
                   })
                 });
                 return;
@@ -7647,7 +7653,10 @@ async function startServer() {
               chatId,
               messageId,
               `🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
-              [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]]
+              [
+                [{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }],
+                [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+              ]
             );
           } else {
             userCarts.set(chatId, newCart);
@@ -7693,7 +7702,10 @@ async function startServer() {
               chatId,
               messageId,
               `🗑️ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
-              [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]]
+              [
+                [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'menu_categories', style: 'primary' }],
+                [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+              ]
             );
             return;
           } else {
@@ -7718,7 +7730,10 @@ async function startServer() {
               chatId,
               messageId,
               `🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
-              [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]]
+              [
+                [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'menu_categories', style: 'primary' }],
+                [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+              ]
             );
             return;
           } else {
@@ -7756,7 +7771,10 @@ async function startServer() {
           chatId,
           messageId,
           '🗑️ سبد خرید شما خالی شد.',
-          [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]]
+          [
+            [{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }],
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+          ]
         );
       } else if (data === 'checkout_start') {
         const _cartNow = userCarts.get(chatId) || [];

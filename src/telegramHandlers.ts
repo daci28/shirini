@@ -153,7 +153,8 @@ function buildProductCard(prod: any, inCartQty: number) {
 
   if (inCartQty > 0) {
     const lineTotal = effectivePrice * inCartQty;
-    cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} ${escapeHtml(prod.unit || 'عدد')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+    cap += `\n🛒 <b>سفارش شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'عدد')}</b>\n`;
+    cap += `💵 <b>مبلغ کل:</b> <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>\n`;
   }
 
   if (prod.description) {
@@ -165,9 +166,11 @@ function buildProductCard(prod: any, inCartQty: number) {
   if (inCartQty > 0) {
     buttons.push([
       { text: '➖ 1', callback_data: `dec_cart_${prod.id}`, style: 'danger' },
-      { text: `🛒 ${inCartQty} در سبد`, callback_data: 'view_cart', style: 'primary' },
       { text: '➕ 1', callback_data: `inc_cart_${prod.id}`, style: 'success' },
       { text: '➕ 5', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
+    ]);
+    buttons.push([
+      { text: `🛒 ${inCartQty.toLocaleString('fa-IR')} عدد در سبد`, callback_data: 'view_cart', style: 'primary' },
     ]);
     buttons.push([
       { text: '🛒 خرید', callback_data: 'view_cart', style: 'success' },

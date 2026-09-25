@@ -20,7 +20,7 @@ export interface PersistedData {
   discounts: any[];
   supportTickets: any[];
   customers: any[];
-  walletTransactions: any[];
+  walletTransactions?: any[];
   backupSnapshots: any[];
   backupSchedule: any;
   /** Sent broadcast history (targeted customer messages). */

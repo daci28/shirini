@@ -4,6 +4,7 @@ import {
   CalendarClock,
   ChevronLeft,
   ClipboardList,
+  Clock,
   CreditCard,
   FilePlus2,
   FileText,
@@ -671,7 +672,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({
               (p) => Boolean(p.reviewedAt || p.status === 'confirmed' || p.status === 'rejected')
             );
             const cardAdminReviewDate = cardPaymentWithReview?.reviewedAt || (cardPaymentWithReview && (cardPaymentWithReview.status === 'confirmed' || cardPaymentWithReview.status === 'rejected') ? (cardPaymentWithReview.paidAt || cardPaymentWithReview.updatedAt) : null);
-            const cardAdminReviewDecision = cardPaymentWithReview?.status === 'confirmed' ? 'تأیید' : cardPaymentWithReview?.status === 'rejected' ? 'رد' : null;
+            const cardAdminReviewDecision = cardPaymentWithReview?.status === 'confirmed' ? 'confirmed' : cardPaymentWithReview?.status === 'rejected' ? 'rejected' : null;
             return (
               <article key={invoice.id} className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-lg transition hover:border-slate-700 sm:p-5">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -811,7 +812,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({
           (p) => Boolean(p.reviewedAt || p.status === 'confirmed' || p.status === 'rejected')
         );
         const adminReviewDate = paymentWithReview?.reviewedAt || (paymentWithReview && (paymentWithReview.status === 'confirmed' || paymentWithReview.status === 'rejected') ? (paymentWithReview.paidAt || paymentWithReview.updatedAt) : null);
-        const adminReviewDecision = paymentWithReview?.status === 'confirmed' ? 'تأیید' : paymentWithReview?.status === 'rejected' ? 'رد' : null;
+        const adminReviewDecision = paymentWithReview?.status === 'confirmed' ? 'confirmed' : paymentWithReview?.status === 'rejected' ? 'rejected' : null;
 
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6">

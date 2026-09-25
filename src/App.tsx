@@ -142,7 +142,7 @@ export default function App() {
 
     async function loadData() {
       try {
-        const [prodRes, ordRes, customOrdRes, invoiceRes, discRes, setRes, supRes, custRes, wtxRes, schedRes, snapRes] = await Promise.all([
+        const [prodRes, ordRes, customOrdRes, invoiceRes, discRes, setRes, supRes, custRes, schedRes, snapRes] = await Promise.all([
           apiFetch('/api/products').catch(() => null),
           apiFetch('/api/orders').catch(() => null),
           apiFetch('/api/custom-orders').catch(() => null),
@@ -189,10 +189,6 @@ export default function App() {
         if (custRes?.ok) {
           const custs = await custRes.json();
           if (Array.isArray(custs)) setCustomers(custs);
-        }
-        if (wtxRes?.ok) {
-          const wtxs = await wtxRes.json();
-          if (Array.isArray(wtxs)) setWalletTransactions(wtxs);
         }
         if (schedRes?.ok) {
           const sched = await schedRes.json();

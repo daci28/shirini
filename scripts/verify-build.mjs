@@ -3,9 +3,21 @@
 // that decide whether the build can succeed. When a platform build fails, this
 // output identifies the cause instead of leaving a bare non-zero exit.
 import fs from 'fs';
+import { execSync } from 'child_process';
 
 const need = ['vite', 'esbuild', 'tailwindcss', '@vitejs/plugin-react', '@tailwindcss/vite'];
-const missing = need.filter((m) => !fs.existsSync(`node_modules/${m}`));
+
+function isInstalled(pkg) {
+  if (fs.existsSync(`node_modules/${pkg}`)) return true;
+  try {
+    import.meta.resolve(pkg);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let missing = need.filter((m) => !isInstalled(m));
 
 const memoryLimitMb = () => {
   // cgroup v2, then v1 — this is what a container actually enforces.
@@ -26,13 +38,24 @@ const limit = memoryLimitMb();
 console.log('[verify-build] node        :', process.version);
 console.log('[verify-build] NODE_ENV    :', process.env.NODE_ENV || '(unset)');
 console.log('[verify-build] memory limit:', limit ? `${limit} MB` : 'unknown');
+
+if (missing.length > 0) {
+  console.log(`[verify-build] Missing build tools: ${missing.join(', ')}. Attempting automatic install...`);
+  try {
+    execSync('npm install --include=dev --loglevel=error', { stdio: 'inherit' });
+    missing = need.filter((m) => !isInstalled(m));
+  } catch (err) {
+    console.warn('[verify-build] Automatic install attempt failed:', err?.message || err);
+  }
+}
+
 console.log('[verify-build] build tools :', missing.length === 0 ? 'all present' : `MISSING -> ${missing.join(', ')}`);
 
 if (missing.length) {
   console.error(
     '\n[verify-build] FAILED: the build tools listed above are not installed.\n' +
       'This happens when the platform installs with --omit=dev or NODE_ENV=production.\n' +
-      'They are declared under "dependencies" in package.json, so a plain `npm install` must be used.',
+      'They are declared under "dependencies" in package.json, so a plain `npm install --include=dev` must be used.',
   );
   process.exit(1);
 }

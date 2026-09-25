@@ -85,6 +85,14 @@ export const INITIAL_FORUM_TOPICS: ForumTopicConfig[] = [
   }
 ];
 
+export const DEFAULT_STORE_RULES_TEXT = `📜 <b>قوانین و مقررات سفارش:</b>
+
+۱. <b>ثبت و پخت:</b> به دلیل تازه بودن کلیه محصولات، پس از تأیید پرداخت سفارش شما در نوبت پخت و آماده‌سازی قرار می‌گیرد.
+۲. <b>زمان‌بندی تحویل:</b> ارسال سفارشات بر اساس بازه زمانی هماهنگ‌شده با پیک ارسال خواهند شد.
+۳. <b>تغییر یا لغو سفارش:</b> لغو یا تغییر اقلام سفارش تنها تا قبل از شروع مرحله آماده‌سازی و پخت امکان‌پذیر است.
+۴. <b>صحت اطلاعات:</b> لطفا آدرس دقیق و شماره تلفن تماس را وارد نمایید تا در ارسال مشکلی پیش نیاید.
+۵. <b>پرداخت:</b> ارسال فیش واریزی معتبر جهت شروع سفارش الزامی است.`;
+
 export const INITIAL_BOT_SETTINGS: BotSettings = {
   botName: '',
   botUsername: '',
@@ -99,6 +107,13 @@ export const INITIAL_BOT_SETTINGS: BotSettings = {
   freeShippingThreshold: 0,
   unpaidOrderExpiryEnabled: false,
   unpaidOrderExpiryMinutes: 30,
+  storeRulesEnabled: false,
+  storeRulesDisplayMode: 'text',
+  storeRulesText: DEFAULT_STORE_RULES_TEXT,
+  storeRulesImage: '',
+  storeRulesPdf: '',
+  storeRulesPdfFilename: '',
+  storeRulesButtonText: '✅ قوانین را مطالعه کرده و موافقم',
   adminTelegramId: '',
   adminTelegramIds: [],
   welcomeMessage: '',

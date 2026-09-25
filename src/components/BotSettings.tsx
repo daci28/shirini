@@ -32,12 +32,21 @@ import {
   Plus,
   Trash2,
   Clock,
-  Timer
+  Timer,
+  FileText,
+  FileUp,
+  FileCheck,
+  Download,
+  Image as ImageIcon,
+  File,
+  RotateCcw
 } from 'lucide-react';
 import { BotSettings, ForumTopicConfig, RequiredChannel, CustomerUser } from '../types';
 import { CustomerBroadcastPanel } from './CustomerBroadcastPanel';
-import { INITIAL_FORUM_TOPICS } from '../data/initialData';
+import { INITIAL_FORUM_TOPICS, DEFAULT_STORE_RULES_TEXT } from '../data/initialData';
 import { formatPrice } from '../utils/formatters';
+import { uploadImagesWithProgress, uploadDocumentWithProgress, type UploadProgress } from '../utils/uploadWithProgress';
+import UploadProgressBar from './UploadProgressBar';
 
 type SettingsUpdate = Partial<BotSettings> & { clearTelegramBotToken?: boolean };
 
@@ -83,6 +92,69 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
   // Web Admin Panel credentials states
   const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Store Rules upload states
+  const [rulesImageProgress, setRulesImageProgress] = useState<UploadProgress | null>(null);
+  const [rulesPdfProgress, setRulesPdfProgress] = useState<UploadProgress | null>(null);
+  const [isResettingRules, setIsResettingRules] = useState(false);
+  const [resetRulesResult, setResetRulesResult] = useState<string | null>(null);
+
+  const handleRulesImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const urls = await uploadImagesWithProgress([file], setRulesImageProgress);
+      if (urls.length > 0) {
+        handleInputChange('storeRulesImage', urls[0]);
+      } else {
+        alert('آپلود تصویر قوانین ناموفق بود.');
+      }
+    } catch (err) {
+      console.error('Failed to upload rules image:', err);
+      alert('خطا در آپلود تصویر قوانین');
+    }
+  };
+
+  const handleRulesPdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      alert('لطفاً فقط فایل با پسوند PDF انتخاب فرمایید.');
+      return;
+    }
+    try {
+      const result = await uploadDocumentWithProgress(file, setRulesPdfProgress);
+      if (result?.url) {
+        handleInputChange('storeRulesPdf', result.url);
+        handleInputChange('storeRulesPdfFilename', result.filename || file.name);
+      } else {
+        alert('آپلود فایل PDF قوانین ناموفق بود.');
+      }
+    } catch (err) {
+      console.error('Failed to upload rules PDF:', err);
+      alert('خطا در آپلود فایل PDF قوانین');
+    }
+  };
+
+  const handleResetRulesAcceptance = async () => {
+    if (!confirm('آیا مطمئن هستید؟ با این کار وضعیت تأییدیه همه مشتریان ریست می‌شود و در مراجعه بعدی به بات، مجدداً قوانین به آن‌ها نمایش داده خواهد شد.')) return;
+    setIsResettingRules(true);
+    setResetRulesResult(null);
+    try {
+      const res = await fetch('/api/settings/reset-rules-acceptance', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setResetRulesResult(`تأییدیه قوانین برای ${data.resetCount || 0} مشتری بازنشانی شد.`);
+      } else {
+        alert('خطا در بازنشانی تأییدیه قوانین');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('خطا در برقراری ارتباط با سرور');
+    } finally {
+      setIsResettingRules(false);
+    }
+  };
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -938,6 +1010,298 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
                 </button>
               )}
             </>
+          )}
+        </div>
+
+        {/* Store Rules & Terms of Service Section */}
+        <div className="bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 shadow-xl space-y-5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shadow-md shadow-indigo-500/10">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">قوانین و مقررات فروشگاه (تأیید اجباری توسط مشتری)</h3>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 ${
+                    formData.storeRulesEnabled 
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {formData.storeRulesEnabled ? 'فعال' : 'غیرفعال'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  نمایش قوانین در سه حالت متن، عکس/پوستر و فایل PDF و الزام مشتری به انتخاب گزینه «موافقم» قبل از استفاده از ربات
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2.5 cursor-pointer bg-slate-800/80 hover:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 transition-all">
+                <input
+                  type="checkbox"
+                  checked={Boolean(formData.storeRulesEnabled)}
+                  onChange={(e) => handleInputChange('storeRulesEnabled', e.target.checked)}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-white select-none">
+                  {formData.storeRulesEnabled ? 'تأیید قوانین فعال است' : 'تأیید قوانین غیرفعال است'}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {!formData.storeRulesEnabled ? (
+            <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 text-xs text-slate-400 leading-relaxed">
+              این بخش در حال حاضر غیرفعال است و مشتریان بدون نیاز به تأیید قوانین وارد منوی اصلی ربات می‌شوند. برای فعال‌سازی، تیک بالا را روشن نمایید.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              
+              {/* Display Mode Selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-300">
+                  فرمت نمایش قوانین به مشتری در تلگرام:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'text', label: '📝 فقط متن', desc: 'ارسال پیام متنی قوانین' },
+                    { id: 'image', label: '🖼 فقط عکس / پوستر', desc: 'ارسال پوستر اینفوگرافیک' },
+                    { id: 'pdf', label: '📄 فقط فایل PDF', desc: 'ارسال فایل پی‌دی‌اف سند' },
+                    { id: 'all', label: '🌟 حالت ترکیبی', desc: 'متن + تصویر + فایل PDF' },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => handleInputChange('storeRulesDisplayMode', mode.id)}
+                      className={`p-3 rounded-2xl border text-right transition-all flex flex-col justify-between ${
+                        (formData.storeRulesDisplayMode || 'text') === mode.id
+                          ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-600/10'
+                          : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="text-xs font-bold">{mode.label}</span>
+                      <span className="text-[10px] text-slate-500 mt-1">{mode.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 1. Text Rules Editor */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-indigo-400" />
+                    <span>متن قوانین و مقررات</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleInputChange('storeRulesText', DEFAULT_STORE_RULES_TEXT)}
+                    className="text-[11px] text-indigo-300 hover:text-indigo-200 flex items-center gap-1"
+                    title="جایگذاری متن پیش‌فرض قوانین"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    بازنشانی به متن پیشنهادی
+                  </button>
+                </div>
+                <textarea
+                  rows={6}
+                  value={formData.storeRulesText ?? DEFAULT_STORE_RULES_TEXT}
+                  onChange={(e) => handleInputChange('storeRulesText', e.target.value)}
+                  placeholder="متن قوانین و ضوابط سفارش را اینجا بنویسید..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
+                />
+                <p className="text-[11px] text-slate-500">
+                  می‌توانید از متغیر <code>{'{storeName}'}</code> جهت درج خودکار نام فروشگاه در متن استفاده کنید. تگ‌های HTML تلگرام مانند <code>&lt;b&gt;</code> و <code>&lt;i&gt;</code> نیز پشتیبانی می‌شوند.
+                </p>
+              </div>
+
+              {/* 2. Image / Poster Rules */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-purple-400" />
+                    <span>تصویر یا پوستر قوانین (عکس/اینفوگرافیک)</span>
+                  </label>
+                  {formData.storeRulesImage && (
+                    <button
+                      type="button"
+                      onClick={() => handleInputChange('storeRulesImage', '')}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      حذف تصویر
+                    </button>
+                  )}
+                </div>
+
+                {rulesImageProgress && (
+                  <UploadProgressBar
+                    progress={rulesImageProgress}
+                  />
+                )}
+
+                {formData.storeRulesImage ? (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3 rounded-xl bg-slate-900 border border-slate-800">
+                    <img
+                      src={formData.storeRulesImage}
+                      alt="پوستر قوانین"
+                      className="w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-xl border border-slate-700"
+                    />
+                    <div className="space-y-1.5 text-xs text-slate-300">
+                      <p className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                        <Check className="w-4 h-4" />
+                        تصویر قوانین بارگذاری شده است.
+                      </p>
+                      <p className="text-[11px] text-slate-400 font-mono break-all" dir="ltr">
+                        {formData.storeRulesImage}
+                      </p>
+                      <a
+                        href={formData.storeRulesImage}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:underline pt-1"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        مشاهده تصویر در سایز کامل
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-slate-700 hover:border-purple-500 bg-slate-900/50 hover:bg-slate-900 cursor-pointer transition-all">
+                    <FileUp className="w-7 h-7 text-purple-400" />
+                    <span className="text-xs font-semibold text-slate-300">
+                      انتخاب یا کشیدن عکس/پوستر قوانین (PNG، JPG، WEBP)
+                    </span>
+                    <span className="text-[10px] text-slate-500">حداکثر حجم ۱۰ مگابایت</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      onChange={handleRulesImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* 3. PDF Document Rules */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <File className="w-4 h-4 text-rose-400" />
+                    <span>فایل PDF قوانین و مقررات (سند رسمی)</span>
+                  </label>
+                  {formData.storeRulesPdf && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleInputChange('storeRulesPdf', '');
+                        handleInputChange('storeRulesPdfFilename', '');
+                      }}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      حذف فایل PDF
+                    </button>
+                  )}
+                </div>
+
+                {rulesPdfProgress && (
+                  <UploadProgressBar
+                    progress={rulesPdfProgress}
+                  />
+                )}
+
+                {formData.storeRulesPdf ? (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">
+                          {formData.storeRulesPdfFilename || 'قوانین-و-مقررات-فروشگاه.pdf'}
+                        </p>
+                        <p className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" />
+                          فایل PDF برای ارسال در تلگرام آماده است
+                        </p>
+                      </div>
+                    </div>
+
+                    <a
+                      href={formData.storeRulesPdf}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      دانلود / مشاهده PDF
+                    </a>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed border-slate-700 hover:border-rose-500 bg-slate-900/50 hover:bg-slate-900 cursor-pointer transition-all">
+                    <FileUp className="w-7 h-7 text-rose-400" />
+                    <span className="text-xs font-semibold text-slate-300">
+                      انتخاب فایل قوانین و مقررات با فرمت PDF
+                    </span>
+                    <span className="text-[10px] text-slate-500">حداکثر حجم ۲۵ مگابایت</span>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={handleRulesPdfUpload}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* 4. Button Text and Reset Action */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    متن دکمه تأیید قوانین (در تلگرام):
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.storeRulesButtonText ?? '✅ قوانین را مطالعه کرده و موافقم'}
+                    onChange={(e) => handleInputChange('storeRulesButtonText', e.target.value)}
+                    placeholder="✅ قوانین را مطالعه کرده و موافقم"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    این متن روی دکمه شیشه‌ای زیر قوانین در تلگرام نمایش داده می‌شود.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-white">
+                      درخواست مجدد تأیید قوانین از مشتریان
+                    </label>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      اگر قوانین جدیدی تعیین کرده‌اید، با زدن این دکمه وضعیت همه مشتریان ریست می‌شود و در مراجعه بعدی باید دوباره قوانین را تأیید کنند.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isResettingRules}
+                    onClick={handleResetRulesAcceptance}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all self-start disabled:opacity-50"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${isResettingRules ? 'animate-spin' : ''}`} />
+                    <span>{isResettingRules ? 'در حال بازنشانی...' : '🔄 بازنشانی تأییدیه همه مشتریان'}</span>
+                  </button>
+                  {resetRulesResult && (
+                    <p className="text-[11px] text-emerald-400 font-semibold">{resetRulesResult}</p>
+                  )}
+                </div>
+              </div>
+
+            </div>
           )}
         </div>
 

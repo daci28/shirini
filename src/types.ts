@@ -178,6 +178,20 @@ export interface BotSettings {
   /** Master switch for the forced-join gate; when false the bot never checks membership. */
   requiredChannelsEnabled?: boolean;
   requiredChannels?: RequiredChannel[];
+  /** Master switch for requiring customers to view and accept store rules before using the bot. */
+  storeRulesEnabled?: boolean;
+  /** Display format for the store rules: 'text' | 'image' | 'pdf' | 'all' */
+  storeRulesDisplayMode?: 'text' | 'image' | 'pdf' | 'all';
+  /** Text content of the rules shown to the customer. */
+  storeRulesText?: string;
+  /** Image URL or path (e.g. infographic banner of rules) */
+  storeRulesImage?: string;
+  /** PDF Document URL or path */
+  storeRulesPdf?: string;
+  /** Original filename of the uploaded PDF */
+  storeRulesPdfFilename?: string;
+  /** Label for the accept button (default: ✅ قوانین را مطالعه کرده و موافقم) */
+  storeRulesButtonText?: string;
   webAdminUrl?: string;
   webAdminUsername?: string;
   webAdminPassword?: string;
@@ -269,6 +283,10 @@ export interface CustomerUser {
    * invent a category without a migration.
    */
   tags?: string[];
+  /** True when the customer has accepted the store rules / terms of service. */
+  rulesAccepted?: boolean;
+  /** Timestamp when terms were accepted. */
+  rulesAcceptedAt?: string;
   createdAt: string;
   lastActiveAt: string;
 }

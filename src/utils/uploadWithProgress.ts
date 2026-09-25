@@ -89,3 +89,52 @@ export async function uploadImagesWithProgress(
   }
   return urls;
 }
+
+/**
+ * Uploads a document (PDF) to /api/upload-document and reports progress.
+ */
+export function uploadDocumentWithProgress(
+  file: File,
+  onProgress?: (progress: UploadProgress | null) => void,
+): Promise<{ url: string; filename: string } | null> {
+  return new Promise((resolve) => {
+    onProgress?.({ percent: 0, current: 1, total: 1 });
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/upload-document', true);
+    request.withCredentials = true;
+    request.setRequestHeader('Content-Type', file.type || 'application/pdf');
+    request.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || !event.total) return;
+      const percent = Math.round((event.loaded / event.total) * 100);
+      onProgress?.({ percent: Math.min(100, Math.max(0, percent)), current: 1, total: 1 });
+    };
+
+    request.onload = () => {
+      onProgress?.(null);
+      let body: any = null;
+      try {
+        body = JSON.parse(request.responseText);
+      } catch {
+        body = null;
+      }
+      if (request.status < 200 || request.status >= 300 || !body?.url) {
+        resolve(null);
+        return;
+      }
+      resolve({ url: body.url as string, filename: body.filename || file.name });
+    };
+
+    request.onerror = () => {
+      onProgress?.(null);
+      resolve(null);
+    };
+    request.onabort = () => {
+      onProgress?.(null);
+      resolve(null);
+    };
+
+    request.send(file);
+  });
+}

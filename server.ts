@@ -14,7 +14,8 @@ import {
   INITIAL_BACKUP_SCHEDULE,
   INITIAL_BACKUP_SNAPSHOTS,
   INITIAL_CUSTOM_ORDERS,
-  INITIAL_FORUM_TOPICS
+  INITIAL_FORUM_TOPICS,
+  DEFAULT_STORE_RULES_TEXT
 } from './src/data/initialData';
 import { 
   Product, 
@@ -419,7 +420,7 @@ function saveAllData() {
 // URL from its own servers without the administrator's browser session. Keep
 // them separate from protected customer uploads and application data.
 const PRODUCT_IMAGE_DIR = path.join(DATA_DIR, 'product-images');
-const PRODUCT_IMAGE_FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:avif|gif|jpe?g|png|webp)$/i;
+const PRODUCT_IMAGE_FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:avif|gif|jpe?g|png|webp|pdf)$/i;
 
 // Telegram file IDs are opaque and are only useful through the Bot API. Cache
 // the downloaded bytes on Railway's persistent volume so opening a receipt (or
@@ -530,6 +531,8 @@ function productImageFilename(reference: unknown, expectedRoute: PublicProductIm
 }
 
 function isReferencedProductImage(filename: string, route: PublicProductImageRoute): boolean {
+  if (productImageFilename(botSettings.storeRulesImage, route) === filename) return true;
+  if (productImageFilename(botSettings.storeRulesPdf, route) === filename) return true;
   return products.some((product) => {
     const references = [product.image, ...(Array.isArray(product.images) ? product.images : [])];
     return references.some((reference) => productImageFilename(reference, route) === filename);
@@ -1063,6 +1066,47 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // Upload PDF document (e.g. store rules / terms of service)
+  app.post('/api/upload-document', express.raw({ type: ['application/pdf', 'application/octet-stream', '*/*'], limit: '25mb' }), (req: Request, res: Response) => {
+    try {
+      const fileData = req.body as Buffer;
+      if (!Buffer.isBuffer(fileData) || fileData.length === 0) {
+        res.status(400).json({ error: 'فایل ارسالی معتبر نیست.' });
+        return;
+      }
+
+      const rawName = String(req.headers['x-filename'] || 'Store-Rules.pdf');
+      const originalName = decodeURIComponent(rawName).slice(0, 150) || 'قوانین-فروشگاه.pdf';
+      const docId = `doc-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
+      const filename = `${docId}.pdf`;
+      fs.mkdirSync(PRODUCT_IMAGE_DIR, { recursive: true });
+      fs.writeFileSync(path.join(PRODUCT_IMAGE_DIR, filename), fileData);
+      rememberUploadedImage(filename);
+
+      res.json({
+        success: true,
+        url: `/product-images/${encodeURIComponent(filename)}`,
+        filename: originalName
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Reset rules acceptance for all customers
+  app.post('/api/settings/reset-rules-acceptance', (_req: Request, res: Response) => {
+    let resetCount = 0;
+    for (const cust of customers) {
+      if (cust.rulesAccepted) {
+        cust.rulesAccepted = false;
+        delete cust.rulesAcceptedAt;
+        resetCount++;
+      }
+    }
+    saveAllData();
+    res.json({ success: true, resetCount });
   });
 
   // Serve protected non-catalog uploads for authenticated panel users only.
@@ -1713,6 +1757,41 @@ async function startServer() {
         if (trimmed.trim()) cleanedTexts[key] = trimmed;
       }
       (updates as any).botTexts = cleanedTexts;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesEnabled')) {
+      updates.storeRulesEnabled = Boolean(updates.storeRulesEnabled);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesDisplayMode')) {
+      const allowedModes = ['text', 'image', 'pdf', 'all'];
+      updates.storeRulesDisplayMode = allowedModes.includes(String(updates.storeRulesDisplayMode))
+        ? (updates.storeRulesDisplayMode as any)
+        : 'text';
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesText')) {
+      updates.storeRulesText = typeof updates.storeRulesText === 'string'
+        ? updates.storeRulesText.slice(0, 4000)
+        : '';
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesImage')) {
+      updates.storeRulesImage = typeof updates.storeRulesImage === 'string'
+        ? updates.storeRulesImage.slice(0, 500)
+        : '';
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesPdf')) {
+      updates.storeRulesPdf = typeof updates.storeRulesPdf === 'string'
+        ? updates.storeRulesPdf.slice(0, 500)
+        : '';
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesPdfFilename')) {
+      updates.storeRulesPdfFilename = typeof updates.storeRulesPdfFilename === 'string'
+        ? updates.storeRulesPdfFilename.slice(0, 200)
+        : '';
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'storeRulesButtonText')) {
+      updates.storeRulesButtonText = typeof updates.storeRulesButtonText === 'string'
+        ? updates.storeRulesButtonText.slice(0, 100)
+        : '';
     }
 
     botSettings = { ...botSettings, ...updates };
@@ -5404,6 +5483,90 @@ async function startServer() {
     return true;
   }
 
+  /**
+   * Helper to send store rules to a customer (supporting Text, Image, PDF Document, or Combined).
+   */
+  async function sendStoreRulesPrompt(token: string, chatId: string): Promise<void> {
+    const rulesText = (botSettings.storeRulesText || DEFAULT_STORE_RULES_TEXT)
+      .replace(/\{storeName\}/g, botSettings.storeName || 'فروشگاه');
+    const buttonText = botSettings.storeRulesButtonText || '✅ قوانین را مطالعه کرده و موافقم';
+    const inlineKeyboard = [[{ text: buttonText, callback_data: 'accept_store_rules' }]];
+
+    const displayMode = botSettings.storeRulesDisplayMode || 'all';
+    const hasImage = Boolean(botSettings.storeRulesImage && botSettings.storeRulesImage.trim());
+    const hasPdf = Boolean(botSettings.storeRulesPdf && botSettings.storeRulesPdf.trim());
+
+    // 1. Send Image if available and requested
+    if (hasImage && (displayMode === 'image' || displayMode === 'all')) {
+      const imageSrc = botSettings.storeRulesImage!;
+      const filename = imageSrc.startsWith('/product-images/') ? imageSrc.replace('/product-images/', '') : null;
+      const filePath = filename ? path.join(PRODUCT_IMAGE_DIR, decodeURIComponent(filename)) : null;
+
+      if (filePath && fs.existsSync(filePath)) {
+        const form = new FormData();
+        form.append('chat_id', String(chatId));
+        form.append('photo', new Blob([fs.readFileSync(filePath)]), filename || 'rules.jpg');
+        if (displayMode === 'image') {
+          form.append('caption', '📜 <b>قوانین و مقررات فروشگاه</b>\nلطفاً تصویر فوق را مطالعه کرده و در صورت موافقت دکمه زیر را انتخاب نمایید:');
+          form.append('parse_mode', 'HTML');
+          form.append('reply_markup', JSON.stringify({ inline_keyboard: inlineKeyboard }));
+          await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form }).catch(() => undefined);
+          return;
+        } else {
+          await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form }).catch(() => undefined);
+        }
+      }
+    }
+
+    // 2. Send PDF Document if available and requested
+    if (hasPdf && (displayMode === 'pdf' || displayMode === 'all')) {
+      const pdfSrc = botSettings.storeRulesPdf!;
+      const filename = pdfSrc.startsWith('/product-images/') ? pdfSrc.replace('/product-images/', '') : null;
+      const filePath = filename ? path.join(PRODUCT_IMAGE_DIR, decodeURIComponent(filename)) : null;
+
+      if (filePath && fs.existsSync(filePath)) {
+        const form = new FormData();
+        form.append('chat_id', String(chatId));
+        const docName = botSettings.storeRulesPdfFilename || 'قوانین-فروشگاه.pdf';
+        form.append('document', new Blob([fs.readFileSync(filePath)]), docName);
+        if (displayMode === 'pdf') {
+          form.append('caption', '📄 <b>فایل قوانین و مقررات فروشگاه</b>\nلطفاً فایل پی‌دی‌اف را دانلود و مطالعه نموده و سپس گزینه زیر را انتخاب کنید:');
+          form.append('parse_mode', 'HTML');
+          form.append('reply_markup', JSON.stringify({ inline_keyboard: inlineKeyboard }));
+          await fetch(`https://api.telegram.org/bot${token}/sendDocument`, { method: 'POST', body: form }).catch(() => undefined);
+          return;
+        } else {
+          await fetch(`https://api.telegram.org/bot${token}/sendDocument`, { method: 'POST', body: form }).catch(() => undefined);
+        }
+      }
+    }
+
+    // 3. Send Text message (for 'text', 'all', or fallback)
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: rulesText,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: inlineKeyboard },
+      }),
+    }).catch((e) => console.error('[storeRules] sendMessage error:', e));
+  }
+
+  /**
+   * True when customer has not yet accepted store rules.
+   */
+  async function blockedByStoreRules(token: string, chatId: string, userId: string): Promise<boolean> {
+    if (!botSettings.storeRulesEnabled) return false;
+    if (isTelegramAdmin(String(userId))) return false;
+    const cust = customers.find(c => String(c.telegramId) === String(chatId));
+    if (cust && cust.rulesAccepted) return false;
+
+    await sendStoreRulesPrompt(token, chatId);
+    return true;
+  }
+
   // Used both for /start and for every "back to main menu" button, so the
   // customer always sees the same main menu (no stray cake photo / store name).
   async function sendBotMainMenu(token: string, chatId: string, from: any) {
@@ -5597,6 +5760,9 @@ async function startServer() {
         // Forced-join gate: the main menu is withheld until every required
         // channel has been joined.
         if (await blockedByRequiredChannels(token, chatId, String(msg.from?.id ?? chatId))) return;
+
+        // Store Rules gate: customer must review and accept terms before main menu.
+        if (await blockedByStoreRules(token, chatId, String(msg.from?.id ?? chatId))) return;
 
         await sendBotMainMenu(token, chatId, msg.from);
       } else if (text === '/admin') {
@@ -6267,6 +6433,43 @@ async function startServer() {
             parse_mode: 'HTML',
           }),
         });
+
+        // After passing join gate, check store rules!
+        if (await blockedByStoreRules(token, chatId, callbackActorId)) return;
+
+        await sendBotMainMenu(token, chatId, cb.from);
+        return;
+      }
+
+      // Customer accepts store rules & terms
+      if (data === 'accept_store_rules') {
+        let cust = customers.find(c => String(c.telegramId) === String(chatId));
+        if (!cust) {
+          cust = upsertBotCustomer(customers, {
+            telegramId: chatId,
+            name: [cb.from?.first_name, cb.from?.last_name].filter(Boolean).join(' ').trim() || 'مشتری تلگرام',
+            username: cb.from?.username || '',
+          });
+        }
+        cust.rulesAccepted = true;
+        cust.rulesAcceptedAt = new Date().toISOString();
+        saveAllData();
+
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `✅ <b>قوانین با موفقیت تأیید شد.</b>\nبه قنادی ${escapeTelegramHtml(botSettings.storeName || '')} خوش آمدید!`,
+            parse_mode: 'HTML',
+          }),
+        });
+
+        sendToTelegramTopic(
+          'customers',
+          `📜 <b>تأیید قوانین فروشگاه:</b>\n\n👤 مشتری: <b>${escapeTelegramHtml(cust.name || 'کاربر')}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
+        );
+
         await sendBotMainMenu(token, chatId, cb.from);
         return;
       }
@@ -6274,6 +6477,7 @@ async function startServer() {
       // The gate guards every customer action, not just /start: otherwise a
       // stale keyboard from before the gate was enabled would still work.
       if (cb.message?.chat?.type === 'private' && await blockedByRequiredChannels(token, chatId, callbackActorId)) return;
+      if (cb.message?.chat?.type === 'private' && await blockedByStoreRules(token, chatId, callbackActorId)) return;
 
       // A payment callback is valid only in the private chat of the exact bot
       // user selected by the administrator.

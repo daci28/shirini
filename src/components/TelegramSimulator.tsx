@@ -38,6 +38,7 @@ import {
   ProductCategory,
   DiscountCode
 } from '../types';
+import { DEFAULT_STORE_RULES_TEXT } from '../data/initialData';
 import { formatPrice, toPersianDigits, formatDatePersian } from '../utils/formatters';
 import { resolveTelegramImageSource } from '../utils/telegramImage';
 import { matchesSearchValues } from '../utils/search';
@@ -82,6 +83,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
   const [inputText, setInputText] = useState('');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [cart, setCart] = useState<{ productId: string; quantity: number }[]>([]);
+  const [simulatorRulesAccepted, setSimulatorRulesAccepted] = useState(false);
   const [appliedDiscount, setAppliedDiscount] = useState<{
     code: string;
     discountAmount: number;
@@ -160,6 +162,52 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
   };
 
   const sendCustomerWelcomeMessage = () => {
+    if (botSettings.storeRulesEnabled && !simulatorRulesAccepted) {
+      const mode = botSettings.storeRulesDisplayMode || 'all';
+      const buttonText = botSettings.storeRulesButtonText || '✅ قوانین را مطالعه کرده و موافقم';
+      const rulesText = (botSettings.storeRulesText || DEFAULT_STORE_RULES_TEXT)
+        .replace(/\{storeName\}/g, botSettings.storeName || 'فروشگاه');
+
+      const buttons: TelegramInlineButton[][] = [
+        [{ text: buttonText, callback_data: 'accept_store_rules' }]
+      ];
+
+      if (mode === 'image' && botSettings.storeRulesImage) {
+        addBotMessage(
+          '📜 <b>قوانین و مقررات فروشگاه</b>\nلطفاً تصویر فوق را مطالعه کرده و در صورت موافقت گزینه زیر را انتخاب کنید:',
+          buttons,
+          botSettings.storeRulesImage,
+          200
+        );
+        return;
+      }
+
+      if (mode === 'pdf' && botSettings.storeRulesPdf) {
+        addBotMessage(
+          `📄 <b>فایل قوانین و مقررات فروشگاه:</b>\n📎 <code>${botSettings.storeRulesPdfFilename || 'Store-Rules.pdf'}</code>\n\nلطفاً فایل ضمیمه را مطالعه نموده و سپس گزینه زیر را لمس نمایید:`,
+          buttons,
+          undefined,
+          200
+        );
+        return;
+      }
+
+      let extraContent = '';
+      if (mode === 'all') {
+        if (botSettings.storeRulesPdf) {
+          extraContent += `\n\n📄 <b>فایل PDF ضمیمه:</b> <code>${botSettings.storeRulesPdfFilename || 'Store-Rules.pdf'}</code>`;
+        }
+      }
+
+      addBotMessage(
+        rulesText + extraContent,
+        buttons,
+        (mode === 'all' && botSettings.storeRulesImage) ? botSettings.storeRulesImage : undefined,
+        200
+      );
+      return;
+    }
+
     const text = `🌸 <b>به ربات رسمی قنادی ${botSettings.storeName} خوش آمدید!</b>\n\n${botSettings.welcomeMessage}\n\n🍰 انواع کیک‌های سفارشی، شیرینی تر و خامه‌ای، باقلوای تازه و دسرهای بین‌المللی با پخت روزانه.\n\n👇 جهت مشاهده محصولات، انتخاب تعداد و ثبت سفارش از دکمه‌های شیشه‌ای زیر استفاده نمایید:`;
     const buttons: TelegramInlineButton[][] = [
       [
@@ -339,6 +387,37 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       setRole('customer');
       addUserMessage('بازگشت به دید مشتری 👥');
       sendCustomerWelcomeMessage();
+      return;
+    }
+
+    // Accept store rules in simulator
+    if (data === 'accept_store_rules') {
+      addUserMessage(botSettings.storeRulesButtonText || '✅ قوانین را مطالعه کرده و موافقم');
+      setSimulatorRulesAccepted(true);
+      addBotMessage(
+        `✅ <b>قوانین با موفقیت تأیید شد.</b>\nبه قنادی ${botSettings.storeName || 'ما'} خوش آمدید!`,
+        undefined,
+        undefined,
+        150
+      );
+      setTimeout(() => {
+        const text = `🌸 <b>به ربات رسمی قنادی ${botSettings.storeName} خوش آمدید!</b>\n\n${botSettings.welcomeMessage}\n\n🍰 انواع کیک‌های سفارشی، شیرینی تر و خامه‌ای، باقلوای تازه و دسرهای بین‌المللی با پخت روزانه.\n\n👇 جهت مشاهده محصولات، انتخاب تعداد و ثبت سفارش از دکمه‌های شیشه‌ای زیر استفاده نمایید:`;
+        const buttons: TelegramInlineButton[][] = [
+          [
+            { text: '🍰 منوی محصولات و سفارش آنلاین', callback_data: 'customer_categories' },
+            { text: `🛒 سبد خرید (${toPersianDigits(cart.reduce((s, i) => s + i.quantity, 0))})`, callback_data: 'view_cart' }
+          ],
+          [
+            { text: '📦 سفارشات من', callback_data: 'track_orders_list' },
+            { text: '⭐ پرفروش‌ترین‌های هفته', callback_data: 'cat_all' }
+          ],
+          [
+            { text: '📍 آدرس، تلفن و درباره قنادی', callback_data: 'contact_info' },
+            { text: '👨‍🍳 ورود به پنل مدیریت', callback_data: 'switch_to_admin' }
+          ]
+        ];
+        addBotMessage(text, buttons, 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80', 200);
+      }, 500);
       return;
     }
 
@@ -2401,6 +2480,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
             onClick={() => {
               setMessages([]);
               setCart([]);
+              setSimulatorRulesAccepted(false);
               setAdminStep({ mode: 'idle' });
               setCheckoutStep({ step: 'idle' });
               if (role === 'admin') sendAdminWelcomeMessage();

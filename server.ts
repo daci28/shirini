@@ -5663,7 +5663,7 @@ async function startServer() {
         { text: '➕ ۱', callback_data: `inc_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
-        { text: '🛒 مشاهده سبد خرید و تسویه', callback_data: 'view_cart', style: 'success' },
+        { text: '🛒 خرید', callback_data: 'view_cart', style: 'success' },
         { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'primary' },
       ]);
     } else {

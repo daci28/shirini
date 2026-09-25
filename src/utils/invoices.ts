@@ -153,8 +153,10 @@ export function buildOrderInvoice(order: Order): Invoice {
     method: orderPaymentMethod(order.paymentMethod),
     status: paymentStatus,
     receiptImage: order.paymentReceiptImage,
-    createdAt: order.updatedAt || order.createdAt,
-    paidAt: paymentStatus === 'confirmed' ? order.updatedAt : undefined,
+    receiptSubmittedAt: order.receiptSubmittedAt,
+    reviewedAt: order.receiptReviewedAt,
+    createdAt: order.receiptSubmittedAt || order.updatedAt || order.createdAt,
+    paidAt: paymentStatus === 'confirmed' ? (order.receiptReviewedAt || order.updatedAt) : undefined,
   };
   const items: InvoiceItem[] = order.items.map((item, index) => ({
     id: `line-order-${order.id}-${index}`,
@@ -228,9 +230,11 @@ export function buildCustomOrderInvoice(order: CustomPastryOrder): Invoice {
     method: paymentMethod,
     status: paymentStatus,
     receiptImage: order.paymentReceiptImage,
+    receiptSubmittedAt: order.prepaymentSubmittedAt,
+    reviewedAt: order.prepaymentReviewedAt,
     notes: 'بیعانه سفارش سفارشی',
     createdAt: order.prepaymentSubmittedAt || order.updatedAt || order.createdAt,
-    paidAt: paymentStatus === 'confirmed' ? order.prepaymentReviewedAt || order.updatedAt : undefined,
+    paidAt: paymentStatus === 'confirmed' ? (order.prepaymentReviewedAt || order.updatedAt) : undefined,
   }] : [];
   const paidAmount = paymentStatus === 'confirmed' ? prepaymentAmount : 0;
   const status: InvoiceStatus = order.status === 'rejected'

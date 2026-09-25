@@ -3046,7 +3046,12 @@ function testInPlaceProductCardQuantityFlow() {
   assert.ok(simSource.includes('inc_cart_'), 'Simulator must handle inc_cart_ callback');
   assert.ok(simSource.includes('dec_cart_'), 'Simulator must handle dec_cart_ callback');
 
-  console.log('✅ in-place product card quantity adjustment buttons and message editing are fully verified across bot and simulator');
+  // Verify cart view does NOT show product photo (clears photo when rendering cart / text views)
+  assert.ok(simSource.includes('photo: photo || undefined'), 'Simulator must clear previous photo when sending text view');
+  assert.ok(handlersSource.includes("data === 'view_cart'"), 'telegramHandlers.ts must handle view_cart callback');
+  assert.ok(serverSource.includes('sendBotCartView'), 'server.ts must have sendBotCartView');
+
+  console.log('✅ in-place product card quantity adjustment buttons, message editing, and clean cart view are fully verified across bot and simulator');
 }
 
 async function main() {

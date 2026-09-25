@@ -483,7 +483,7 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
     ctx.userStates.delete(ctx.chatId);
 
     const { caption, buttons } = buildProductCard(prod, inCartQty);
-    await tgSend(ctx, caption, buttons);
+    await tgSend(ctx, caption, buttons, prod.image);
     return true;
   }
 
@@ -509,7 +509,45 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
     ctx.userStates.delete(ctx.chatId);
 
     const { caption, buttons } = buildProductCard(prod, inCartQty);
-    await tgSend(ctx, caption, buttons);
+    await tgSend(ctx, caption, buttons, prod.image);
+    return true;
+  }
+
+  // View Shopping Cart (Clean text message overview - NEVER with stray product image)
+  if (data === 'view_cart') {
+    const cart = ctx.userCarts.get(ctx.chatId) || [];
+    if (cart.length === 0) {
+      await tgSend(ctx, '🛒 <b>سبد خرید شما خالی است!</b>\n\nبرای سفارش از منوی محصولات استفاده کنید.', [
+        [{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }],
+        [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+      ]);
+      return true;
+    }
+
+    let cartText = '🛒 <b>سبد خرید شما:</b>\n\n';
+    let subtotal = 0;
+    for (const item of cart) {
+      const prod = ctx.products.find(p => p.id === item.productId);
+      if (prod) {
+        const effectivePrice = prod.discountPercent ? Math.round(prod.price * (100 - prod.discountPercent) / 100) : prod.price;
+        const itemTotal = effectivePrice * item.quantity;
+        subtotal += itemTotal;
+        cartText += `🔹 <b>${escapeHtml(prod.name)}</b>\n   ${item.quantity.toLocaleString('fa-IR')} ${escapeHtml(prod.unit)} × ${effectivePrice.toLocaleString('fa-IR')} = <b>${itemTotal.toLocaleString('fa-IR')} تومان</b>\n\n`;
+      }
+    }
+    cartText += `────────────────\n`;
+    cartText += `💵 مجموع اقلام: <b>${subtotal.toLocaleString('fa-IR')} تومان</b>\n`;
+    cartText += `🛵 هزینه ارسال: پس از انتخاب نحوه دریافت (حضوری / پیک) در مرحله پرداخت محاسبه می‌شود`;
+
+    const buttons = [
+      [{ text: '💳 ثبت سفارش و پرداخت', callback_data: 'checkout_start', style: 'success' }],
+      [{ text: '🗑️ حذف محصول مورد نظر', callback_data: 'cart_remove_item_menu', style: 'danger' }],
+      [{ text: '🗑️ خالی کردن سبد', callback_data: 'clear_cart', style: 'danger' }],
+      [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }],
+      [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+    ];
+
+    await tgSend(ctx, cartText, buttons);
     return true;
   }
 

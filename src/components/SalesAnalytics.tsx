@@ -98,7 +98,7 @@ export const SalesAnalytics: React.FC<SalesAnalyticsProps> = ({ products, orders
           <div>
             <span className="text-xs text-slate-400 block font-medium">شیرینی‌های تحویل شده</span>
             <span className="text-lg font-black text-white block mt-0.5">
-              {toPersianDigits(totalItemsSold)} عدد/کیلو
+              {toPersianDigits(totalItemsSold)} عدد
             </span>
           </div>
         </div>

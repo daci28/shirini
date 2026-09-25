@@ -5642,12 +5642,12 @@ async function startServer() {
     if (prod.productCode) {
       cap += `🏷️ <b>کد محصول:</b> <code>${escapeTelegramHtml(prod.productCode)}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText} / هر ${escapeTelegramHtml(prod.unit || 'کیلوگرم')}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${escapeTelegramHtml(prod.unit || 'کیلوگرم')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} عدد</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
     }
 
     if (prod.description) {
@@ -5658,9 +5658,10 @@ async function startServer() {
     const buttons: any[][] = [];
     if (inCartQty > 0) {
       buttons.push([
-        { text: '➖ ۱', callback_data: `dec_cart_${prod.id}`, style: 'primary' },
-        { text: `🛒 ${inCartQty.toLocaleString('fa-IR')} ${prod.unit} در سبد`, callback_data: 'view_cart', style: 'primary' },
-        { text: '➕ ۱', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➖ 1', callback_data: `dec_cart_${prod.id}`, style: 'danger' },
+        { text: `🛒 ${inCartQty} در سبد`, callback_data: 'view_cart', style: 'primary' },
+        { text: '➕ 1', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➕ 5', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
         { text: '🛒 خرید', callback_data: 'view_cart', style: 'success' },
@@ -5668,7 +5669,8 @@ async function startServer() {
       ]);
     } else {
       buttons.push([
-        { text: '➕ افزودن به سبد خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➕ 1 خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➕ 5 خرید', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
         { text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' },
@@ -5706,7 +5708,7 @@ async function startServer() {
         const effectivePrice = prod.discountPercent ? prod.price * (100 - prod.discountPercent) / 100 : prod.price;
         const itemTotal = effectivePrice * item.quantity;
         subtotal += itemTotal;
-        cartText += `🔹 <b>${prod.name}</b>\n   ${item.quantity.toLocaleString('fa-IR')} ${prod.unit} × ${effectivePrice.toLocaleString('fa-IR')} = <b>${itemTotal.toLocaleString('fa-IR')} تومان</b>\n\n`;
+        cartText += `🔹 <b>${prod.name}</b>\n   ${item.quantity} عدد × ${effectivePrice.toLocaleString('fa-IR')} = <b>${itemTotal.toLocaleString('fa-IR')} تومان</b>\n\n`;
       }
     }
     cartText += `────────────────\n`;
@@ -7657,21 +7659,23 @@ async function startServer() {
             })
           });
         }
-      } else if (data.startsWith('inc_cart_') || data.startsWith('add_to_cart_')) {
-        const prodId = data.replace('inc_cart_', '').replace('add_to_cart_', '');
+      } else if (data.startsWith('inc_cart_') || data.startsWith('inc5_cart_') || data.startsWith('add_to_cart_')) {
+        const isFive = data.startsWith('inc5_cart_');
+        const prodId = isFive ? data.replace('inc5_cart_', '') : data.replace('inc_cart_', '').replace('add_to_cart_', '');
+        const qtyToAdd = isFive ? 5 : 1;
         const prod = products.find(p => p.id === prodId);
         if (!prod) return;
         const cart = userCarts.get(chatId) || [];
         const existing = cart.find((i: any) => i.productId === prod.id);
         if (existing) {
-          existing.quantity += 1;
+          existing.quantity += qtyToAdd;
         } else {
-          cart.push({ productId: prod.id, quantity: 1 });
+          cart.push({ productId: prod.id, quantity: qtyToAdd });
         }
         userCarts.set(chatId, cart);
         saveAllData();
 
-        const currentQty = cart.find((i: any) => i.productId === prod.id)?.quantity || 1;
+        const currentQty = cart.find((i: any) => i.productId === prod.id)?.quantity || qtyToAdd;
         const card = buildProductCard(prod, currentQty);
         await sendOrEditBotMessage(
           token,
@@ -7686,7 +7690,7 @@ async function startServer() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: cb.id,
-            text: `✅ یک ${prod.unit} «${prod.name}» به سبد افزوده شد (تعداد: ${currentQty.toLocaleString('fa-IR')})`
+            text: `✅ ${qtyToAdd} عدد «${prod.name}» به سبد افزوده شد (تعداد: ${currentQty})`
           })
         }).catch(() => {});
       } else if (data.startsWith('dec_cart_')) {

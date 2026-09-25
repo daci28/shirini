@@ -274,12 +274,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     if (prod.productCode) {
       cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit || 'کیلوگرم'}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${toPersianDigits(inCartQty)} ${prod.unit}</b> (جمع: <b>${formatPrice(lineTotal)}</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty} عدد</b> (جمع: <b>${formatPrice(lineTotal)}</b>)\n`;
     }
 
     if (prod.description) {
@@ -290,9 +290,10 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     const buttons: TelegramInlineButton[][] = [];
     if (inCartQty > 0) {
       buttons.push([
-        { text: '➖ ۱', callback_data: `dec_cart_${prod.id}`, style: 'primary' },
-        { text: `🛒 ${toPersianDigits(inCartQty)} ${prod.unit} در سبد`, callback_data: 'view_cart', style: 'primary' },
-        { text: '➕ ۱', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➖ 1', callback_data: `dec_cart_${prod.id}`, style: 'danger' },
+        { text: `🛒 ${inCartQty} در سبد`, callback_data: 'view_cart', style: 'primary' },
+        { text: '➕ 1', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➕ 5', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
         { text: '🛒 خرید', callback_data: 'view_cart', style: 'success' },
@@ -300,7 +301,8 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       ]);
     } else {
       buttons.push([
-        { text: '➕ افزودن به سبد خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➕ 1 خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+        { text: '➕ 5 خرید', callback_data: `inc5_cart_${prod.id}`, style: 'success' },
       ]);
       buttons.push([
         { text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' },
@@ -644,10 +646,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     }
 
     // In-place cart increment / add to cart
-    if (data.startsWith('inc_cart_') || data.startsWith('add_to_cart_') || data.startsWith('add_qty_')) {
+    if (data.startsWith('inc_cart_') || data.startsWith('inc5_cart_') || data.startsWith('add_to_cart_') || data.startsWith('add_qty_')) {
       let prodId = '';
       let qtyToAdd = 1;
-      if (data.startsWith('add_qty_')) {
+      if (data.startsWith('inc5_cart_')) {
+        prodId = data.replace('inc5_cart_', '');
+        qtyToAdd = 5;
+      } else if (data.startsWith('add_qty_')) {
         const parts = data.replace('add_qty_', '').split('_');
         prodId = parts[0];
         qtyToAdd = parseInt(parts[1], 10) || 1;
@@ -2309,7 +2314,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
       setAdminStep(prev => ({
         mode: 'add_image',
-        draftProduct: { ...prev.draftProduct, price: priceNum, unit: 'کیلوگرم' }
+        draftProduct: { ...prev.draftProduct, price: priceNum, unit: 'عدد' }
       }));
 
       // Offer quick preset images or custom upload
@@ -2372,7 +2377,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         name: adminStep.draftProduct?.name || 'شیرینی مخصوص',
         category: adminStep.draftProduct?.category || 'شیرینی تر و خامه‌ای',
         price: adminStep.draftProduct?.price || 350000,
-        unit: 'کیلوگرم',
+        unit: 'عدد',
         image: adminStep.draftProduct?.image || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=700&auto=format&fit=crop&q=80',
         description: userText,
         isAvailable: true,

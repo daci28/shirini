@@ -205,7 +205,7 @@ export const CustomPastryManager: React.FC<CustomPastryManagerProps> = ({
     const initialPrice = order.finalPrice || order.estimatedPrice || 850000;
     setQuotePriceInput(initialPrice);
     setQuotePrepaymentInput(order.prepaymentAmount || Math.round(initialPrice * 0.4));
-    setQuoteMessageInput(`سلام ${order.customerName} عزیز، طرح سفارشی شما با وزن ${order.weightKg || 2} کیلوگرم بررسی شد و امکان اجرای دقیق آن وجود دارد.`);
+    setQuoteMessageInput(`سلام ${order.customerName} عزیز، طرح سفارشی شما بررسی شد و امکان اجرای دقیق آن وجود دارد.`);
     setQuoteNotesInput(order.adminNotes || '');
   };
 
@@ -1079,7 +1079,7 @@ export const CustomPastryManager: React.FC<CustomPastryManagerProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">وزن تقریبی (کیلوگرم):</label>
+                <label className="block text-slate-300 font-semibold mb-1">تعداد نفرات / اندازه:</label>
                 <input
                   type="number"
                   step="0.5"

@@ -3029,29 +3029,33 @@ function testInPlaceProductCardQuantityFlow() {
   const simSource = fs.readFileSync(new URL('../src/components/TelegramSimulator.tsx', import.meta.url), 'utf8');
   const handlersSource = fs.readFileSync(new URL('../src/telegramHandlers.ts', import.meta.url), 'utf8');
 
-  // Verify server.ts has buildProductCard and in-place inc_cart_/dec_cart_
+  // Verify server.ts has buildProductCard and in-place inc_cart_/dec_cart_/inc5_cart_
   assert.ok(serverSource.includes('buildProductCard'), 'server.ts must contain buildProductCard');
   assert.ok(serverSource.includes('inc_cart_'), 'server.ts must handle inc_cart_ callback');
   assert.ok(serverSource.includes('dec_cart_'), 'server.ts must handle dec_cart_ callback');
-  assert.ok(serverSource.includes('➖ ۱'), 'server.ts must have ➖ ۱ button');
-  assert.ok(serverSource.includes('➕ ۱'), 'server.ts must have ➕ ۱ button');
+  assert.ok(serverSource.includes('inc5_cart_'), 'server.ts must handle inc5_cart_ callback');
+  assert.ok(serverSource.includes('➖ 1'), 'server.ts must have ➖ 1 button');
+  assert.ok(serverSource.includes('➕ 1'), 'server.ts must have ➕ 1 button');
+  assert.ok(serverSource.includes('➕ 5'), 'server.ts must have ➕ 5 button');
 
-  // Verify telegramHandlers.ts has buildProductCard and in-place inc_cart_/dec_cart_
+  // Verify telegramHandlers.ts has buildProductCard and in-place inc_cart_/dec_cart_/inc5_cart_
   assert.ok(handlersSource.includes('buildProductCard'), 'telegramHandlers.ts must contain buildProductCard');
   assert.ok(handlersSource.includes('inc_cart_'), 'telegramHandlers.ts must handle inc_cart_ callback');
   assert.ok(handlersSource.includes('dec_cart_'), 'telegramHandlers.ts must handle dec_cart_ callback');
+  assert.ok(handlersSource.includes('inc5_cart_'), 'telegramHandlers.ts must handle inc5_cart_ callback');
 
-  // Verify TelegramSimulator.tsx has buildSimulatorProductCard and in-place inc_cart_/dec_cart_
+  // Verify TelegramSimulator.tsx has buildSimulatorProductCard and in-place inc_cart_/dec_cart_/inc5_cart_
   assert.ok(simSource.includes('buildSimulatorProductCard'), 'Simulator must contain buildSimulatorProductCard');
   assert.ok(simSource.includes('inc_cart_'), 'Simulator must handle inc_cart_ callback');
   assert.ok(simSource.includes('dec_cart_'), 'Simulator must handle dec_cart_ callback');
+  assert.ok(simSource.includes('inc5_cart_'), 'Simulator must handle inc5_cart_ callback');
 
   // Verify cart view does NOT show product photo (clears photo when rendering cart / text views)
   assert.ok(simSource.includes('photo: photo || undefined'), 'Simulator must clear previous photo when sending text view');
   assert.ok(handlersSource.includes("data === 'view_cart'"), 'telegramHandlers.ts must handle view_cart callback');
   assert.ok(serverSource.includes('sendBotCartView'), 'server.ts must have sendBotCartView');
 
-  console.log('✅ in-place product card quantity adjustment buttons, message editing, and clean cart view are fully verified across bot and simulator');
+  console.log('✅ in-place product card quantity adjustment buttons (-1 red, +1, +5 green, English digits), message editing, and clean cart view are fully verified across bot and simulator');
 }
 
 async function main() {

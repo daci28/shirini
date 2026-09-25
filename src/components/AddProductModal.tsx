@@ -31,7 +31,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('شیرینی تر و خامه‌ای');
   const [price, setPrice] = useState('');
-  const [unit, setUnit] = useState('کیلوگرم');
+  const [unit, setUnit] = useState('عدد');
   const [images, setImages] = useState<string[]>([]);
   const [uploadedImagesBase64, setUploadedImagesBase64] = useState<string[]>([]);
   const [customImageUrl, setCustomImageUrl] = useState('');
@@ -265,11 +265,11 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 onChange={(e) => setUnit(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
               >
-                <option value="کیلوگرم">کیلوگرم</option>
-                <option value="جعبه ۱۲ تایی">جعبه ۱۲ تایی</option>
-                <option value="جعبه نیم‌کیلویی">جعبه نیم‌کیلویی</option>
                 <option value="عدد">عدد</option>
+                <option value="بسته">بسته</option>
+                <option value="جعبه">جعبه</option>
                 <option value="دیس">دیس</option>
+                <option value="اسلایس">اسلایس</option>
               </select>
             </div>
           </div>

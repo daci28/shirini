@@ -142,22 +142,22 @@ function buildProductCard(prod: any, inCartQty: number) {
     : `<b>${effectivePrice.toLocaleString('fa-IR')} تومان</b>`;
 
   let cap = `✨━━━━━━━━━━━━━━━━━━━✨\n`;
-  cap += `🎂 <b>${prod.name || 'محصول'}</b>\n`;
+  cap += `🎂 <b>${escapeHtml(prod.name || 'محصول')}</b>\n`;
   cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
-  cap += `📂 <b>دسته‌بندی:</b> ${prod.category || '---'}\n`;
+  cap += `📂 <b>دسته‌بندی:</b> ${escapeHtml(prod.category || '---')}\n`;
   if (prod.productCode) {
-    textCode: cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
+    cap += `🏷️ <b>کد محصول:</b> <code>${escapeHtml(prod.productCode)}</code>\n`;
   }
-  cap += `💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit || 'کیلوگرم'}\n`;
+  cap += `💰 <b>قیمت:</b> ${priceText} / هر ${escapeHtml(prod.unit || 'کیلوگرم')}\n`;
   cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
   if (inCartQty > 0) {
     const lineTotal = effectivePrice * inCartQty;
-    cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${prod.unit}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+    cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'کیلوگرم')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
   }
 
   if (prod.description) {
-    cap += `\n📝 <b>توضیحات:</b>\n<i>${prod.description}</i>\n`;
+    cap += `\n📝 <b>توضیحات:</b>\n<i>${escapeHtml(prod.description)}</i>\n`;
   }
   cap += `✨━━━━━━━━━━━━━━━━━━━✨`;
 

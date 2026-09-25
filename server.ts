@@ -844,7 +844,7 @@ let pollingInterval: NodeJS.Timeout | null = null;
  * /api/health against this list is the fastest way to prove whether the code
  * running in production is the code that was pushed.
  */
-const APP_REVISION = '2026-09-24-expire-unpaid-orders';
+const APP_REVISION = '2026-09-25-in-place-card-qty-v2';
 const APP_FEATURES = [
   'ticket-customer-picker',
   'targeted-broadcast',
@@ -852,6 +852,7 @@ const APP_FEATURES = [
   'legacy-no-discount-callback',
   'broadcast-in-support-tab',
   'replyable-broadcast',
+  'in-place-card-quantity',
 ];
 
 const registeredTelegramChatIds = new Set<string>();
@@ -5625,22 +5626,22 @@ async function startServer() {
       : `<b>${effectivePrice.toLocaleString('fa-IR')} تومان</b>`;
 
     let cap = `✨━━━━━━━━━━━━━━━━━━━✨\n`;
-    cap += `🎂 <b>${prod.name || 'محصول'}</b>\n`;
+    cap += `🎂 <b>${escapeTelegramHtml(prod.name || 'محصول')}</b>\n`;
     cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
-    cap += `📂 <b>دسته‌بندی:</b> ${prod.category || '---'}\n`;
+    cap += `📂 <b>دسته‌بندی:</b> ${escapeTelegramHtml(prod.category || '---')}\n`;
     if (prod.productCode) {
-      cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
+      cap += `🏷️ <b>کد محصول:</b> <code>${escapeTelegramHtml(prod.productCode)}</code>\n`;
     }
-    cap += `💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit || 'کیلوگرم'}\n`;
+    cap += `💰 <b>قیمت:</b> ${priceText} / هر ${escapeTelegramHtml(prod.unit || 'کیلوگرم')}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
     if (inCartQty > 0) {
       const lineTotal = effectivePrice * inCartQty;
-      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${prod.unit}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${escapeTelegramHtml(prod.unit || 'کیلوگرم')}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
     }
 
     if (prod.description) {
-      cap += `\n📝 <b>توضیحات:</b>\n<i>${prod.description}</i>\n`;
+      cap += `\n📝 <b>توضیحات:</b>\n<i>${escapeTelegramHtml(prod.description)}</i>\n`;
     }
     cap += `✨━━━━━━━━━━━━━━━━━━━✨`;
 

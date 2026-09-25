@@ -8,7 +8,7 @@ export type ProductCategory =
 
 export interface Product {
   id: string;
-  productCode: string;
+  productCode?: string;
   name: string;
   category: ProductCategory;
   price: number; // in Tomans
@@ -35,7 +35,7 @@ export type OrderStatus =
 
 export interface OrderItem {
   productId: string;
-  productCode: string;
+  productCode?: string;
   productName: string;
   productImage: string;
   price: number;
@@ -77,7 +77,7 @@ export interface Order {
   couponCode?: string;
   totalAmount: number;
   status: OrderStatus;
-  deliveryMethod: 'pickup' | 'delivery';
+  deliveryMethod?: 'pickup' | 'delivery';
   /** Recipient name captured at the pickup/delivery step. */
   deliveryRecipientName?: string;
   paymentMethod: 'cash_on_delivery' | 'online_payment' | 'card_to_card' | 'online_gateway';
@@ -522,7 +522,7 @@ export interface CustomPastryOrder {
   shapeAndDesign: string; // توضیحات طرح، رنگ، فوندانت یا خامه، مدل، تم
   writingOnCake?: string; // متن یا دل‌نوشته روی کیک / پلاکارت
   referenceImages?: string[]; // تصاویر ارسالی مدل/طرح مشتری
-  deliveryType: 'delivery' | 'pickup';
+  deliveryType?: 'delivery' | 'pickup';
   deliveryAddress?: string;
   /** Requested Solar Hijri delivery day, collected from the customer in Iran's timezone. */
   deliveryDate?: string; // مثال: 1405/06/15

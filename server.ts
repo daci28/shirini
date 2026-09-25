@@ -5613,57 +5613,62 @@ async function startServer() {
     });
   }
 
-  // Interactive inline quantity picker with + and - glass buttons
-  async function sendOrEditQuantityPicker(
-    token: string,
-    chatId: string,
-    messageId: number | undefined,
-    prod: any,
-    selectedQty = 1
-  ) {
-    const qty = Math.max(1, selectedQty);
-    const effectivePrice = prod.discountPercent
+  // Build product card caption and inline buttons reflecting current in-cart quantity
+  function buildProductCard(prod: any, inCartQty: number) {
+    const hasDiscount = prod.discountPercent && prod.discountPercent > 0;
+    const effectivePrice = hasDiscount
       ? Math.round(prod.price * (100 - prod.discountPercent) / 100)
       : prod.price;
-    const totalPrice = effectivePrice * qty;
 
-    const discountText = prod.discountPercent
-      ? ` <s>${prod.price.toLocaleString('fa-IR')}</s> ◀ <b>${effectivePrice.toLocaleString('fa-IR')} تومان</b> (${prod.discountPercent}٪ تخفیف)`
-      : ` <b>${effectivePrice.toLocaleString('fa-IR')} تومان</b>`;
+    const priceText = hasDiscount
+      ? `<s>${prod.price.toLocaleString('fa-IR')}</s> ◀ <b>${effectivePrice.toLocaleString('fa-IR')} تومان</b> (${prod.discountPercent}٪ تخفیف)`
+      : `<b>${effectivePrice.toLocaleString('fa-IR')} تومان</b>`;
 
-    let text = `🍰 <b>تنظیم تعداد سفارش: ${prod.name}</b>\n\n`;
-    text += `💰 <b>قیمت واحد:</b>${discountText} / هر ${prod.unit}\n`;
-    text += `📦 <b>تعداد انتخابی:</b> <b>${qty.toLocaleString('fa-IR')} ${prod.unit}</b>\n`;
-    text += `💎 <b>مبلغ کل:</b> <b>${totalPrice.toLocaleString('fa-IR')} تومان</b>\n\n`;
-    text += `👇 با دکمه‌های ➕ و ➖ زیر تعداد را کم و زیاد کرده و سپس «ثبت در سبد خرید» را لمس کنید:`;
+    let cap = `✨━━━━━━━━━━━━━━━━━━━✨\n`;
+    cap += `🎂 <b>${prod.name || 'محصول'}</b>\n`;
+    cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
+    cap += `📂 <b>دسته‌بندی:</b> ${prod.category || '---'}\n`;
+    if (prod.productCode) {
+      cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
+    }
+    cap += `💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit || 'کیلوگرم'}\n`;
+    cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
-    const prevQty = Math.max(1, qty - 1);
-    const nextQty = qty + 1;
+    if (inCartQty > 0) {
+      const lineTotal = effectivePrice * inCartQty;
+      cap += `\n🛒 <b>تعداد در سبد شما:</b> <b>${inCartQty.toLocaleString('fa-IR')} ${prod.unit}</b> (جمع: <b>${lineTotal.toLocaleString('fa-IR')} تومان</b>)\n`;
+    }
 
-    const buttons: any[][] = [
-      [
-        { text: '➖ ۱', callback_data: `pick_qty_${prod.id}_${prevQty}`, style: 'primary' },
-        { text: `📦 ${qty.toLocaleString('fa-IR')} ${prod.unit}`, callback_data: 'noop_qty', style: 'primary' },
-        { text: '➕ ۱', callback_data: `pick_qty_${prod.id}_${nextQty}`, style: 'success' },
-      ],
-      [
-        { text: '➕ ۲', callback_data: `pick_qty_${prod.id}_${qty + 2}`, style: 'primary' },
-        { text: '➕ ۵', callback_data: `pick_qty_${prod.id}_${qty + 5}`, style: 'primary' },
-        { text: '🔄 ریست (۱)', callback_data: `pick_qty_${prod.id}_1`, style: 'primary' },
-      ],
-      [
-        { text: `🛒 ثبت در سبد خرید (${totalPrice.toLocaleString('fa-IR')} تومان)`, callback_data: `confirm_pick_${prod.id}_${qty}`, style: 'success' },
-      ],
-      [
-        { text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' },
+    if (prod.description) {
+      cap += `\n📝 <b>توضیحات:</b>\n<i>${prod.description}</i>\n`;
+    }
+    cap += `✨━━━━━━━━━━━━━━━━━━━✨`;
+
+    const buttons: any[][] = [];
+    if (inCartQty > 0) {
+      buttons.push([
+        { text: '➖ ۱', callback_data: `dec_cart_${prod.id}`, style: 'primary' },
+        { text: `🛒 ${inCartQty.toLocaleString('fa-IR')} ${prod.unit} در سبد`, callback_data: 'view_cart', style: 'primary' },
+        { text: '➕ ۱', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+      ]);
+      buttons.push([
+        { text: '🛒 مشاهده سبد خرید و تسویه', callback_data: 'view_cart', style: 'success' },
         { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'primary' },
-      ],
-      [
-        { text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' },
-      ]
-    ];
+      ]);
+    } else {
+      buttons.push([
+        { text: '➕ افزودن به سبد خرید', callback_data: `inc_cart_${prod.id}`, style: 'success' },
+      ]);
+      buttons.push([
+        { text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' },
+        { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'primary' },
+      ]);
+    }
+    buttons.push([
+      { text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' },
+    ]);
 
-    await sendOrEditBotMessage(token, chatId, messageId, text, buttons, prod.image);
+    return { caption: cap, buttons };
   }
 
   // Render and send the complete 5-button shopping cart overview (editing in place if messageId provided)
@@ -7624,27 +7629,93 @@ async function startServer() {
             parse_mode: 'HTML'
           })
         });
+        const cart = userCarts.get(chatId) || [];
         for (const prod of filteredProducts.slice(0, 10)) {
-          const priceText = prod.discountPercent 
-            ? `<s>${prod.price.toLocaleString()}</s> ◀ <b>${(prod.price * (100 - prod.discountPercent) / 100).toLocaleString()}</b> (${prod.discountPercent}٪ تخفیف)`
-            : `<b>${prod.price.toLocaleString()}</b>`;
-          const caption = `🎂 <b>${prod.name}</b>\n\n💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit}\n📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود' : '🔴 ناموجود'}\n\n📝 ${prod.description || ''}`;
-          const buttons: any[][] = [
-            [{ text: `➕ ۱ ${prod.unit}`, callback_data: `add_qty_${prod.id}_1`, style: 'success' }, { text: `➕ ۲ ${prod.unit}`, callback_data: `add_qty_${prod.id}_2`, style: 'success' }],
-            [{ text: '🛒 سبد خرید', callback_data: 'view_cart', style: 'primary' }, { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'danger' }]
-          ];
+          const inCartItem = cart.find((i: any) => i.productId === prod.id);
+          const inCartQty = inCartItem ? inCartItem.quantity : 0;
+          const card = buildProductCard(prod, inCartQty);
           await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
               photo: prod.image,
-              caption,
+              caption: card.caption,
               parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: buttons }
+              reply_markup: { inline_keyboard: card.buttons }
             })
           });
         }
+      } else if (data.startsWith('inc_cart_') || data.startsWith('add_to_cart_')) {
+        const prodId = data.replace('inc_cart_', '').replace('add_to_cart_', '');
+        const prod = products.find(p => p.id === prodId);
+        if (!prod) return;
+        const cart = userCarts.get(chatId) || [];
+        const existing = cart.find((i: any) => i.productId === prod.id);
+        if (existing) {
+          existing.quantity += 1;
+        } else {
+          cart.push({ productId: prod.id, quantity: 1 });
+        }
+        userCarts.set(chatId, cart);
+        saveAllData();
+
+        const currentQty = cart.find((i: any) => i.productId === prod.id)?.quantity || 1;
+        const card = buildProductCard(prod, currentQty);
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          card.caption,
+          card.buttons,
+          prod.image
+        );
+        await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: cb.id,
+            text: `✅ یک ${prod.unit} «${prod.name}» به سبد افزوده شد (تعداد: ${currentQty.toLocaleString('fa-IR')})`
+          })
+        }).catch(() => {});
+      } else if (data.startsWith('dec_cart_')) {
+        const prodId = data.replace('dec_cart_', '');
+        const prod = products.find(p => p.id === prodId);
+        if (!prod) return;
+        const cart = userCarts.get(chatId) || [];
+        const existingIndex = cart.findIndex((i: any) => i.productId === prod.id);
+        let currentQty = 0;
+        if (existingIndex >= 0) {
+          if (cart[existingIndex].quantity > 1) {
+            cart[existingIndex].quantity -= 1;
+            currentQty = cart[existingIndex].quantity;
+          } else {
+            cart.splice(existingIndex, 1);
+            currentQty = 0;
+          }
+        }
+        userCarts.set(chatId, cart);
+        saveAllData();
+
+        const card = buildProductCard(prod, currentQty);
+        await sendOrEditBotMessage(
+          token,
+          chatId,
+          messageId,
+          card.caption,
+          card.buttons,
+          prod.image
+        );
+        await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: cb.id,
+            text: currentQty > 0
+              ? `➖ یک واحد کسر شد (تعداد: ${currentQty.toLocaleString('fa-IR')})`
+              : `🗑️ «${prod.name}» از سبد حذف شد`
+          })
+        }).catch(() => {});
       } else if (data.startsWith('custom_qty_')) {
         const prodId = data.replace('custom_qty_', '');
         const prod = products.find(p => p.id === prodId);
@@ -7657,97 +7728,12 @@ async function startServer() {
           `🔢 <b>تعداد دلخواه ${prod.name}</b>\n\nلطفاً تعداد (${prod.unit}) را وارد کنید:\n<i>(مثال: 2 یا 4.5)</i>`,
           [[{ text: '❌ انصراف', callback_data: 'view_cart', style: 'danger' }]]
         );
-      } else if (data.startsWith('add_qty_')) {
-        const parts = data.split('_');
-        const qty = Number(parts[parts.length - 1]);
-        const prodId = data.slice('add_qty_'.length, data.lastIndexOf('_'));
-        const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
-        const quantity = Number.isFinite(qty) && qty > 0 ? qty : 1;
-        const cart = userCarts.get(chatId) || [];
-        const existing = cart.find((i: any) => i.productId === prod.id);
-        if (existing) { existing.quantity += quantity; } else { cart.push({ productId: prod.id, quantity }); }
-        userCarts.set(chatId, cart);
-        userStates.delete(chatId);
-        saveAllData();
-
-        const totalQty = cart.reduce((s: number, i: any) => s + i.quantity, 0);
-        await sendOrEditBotMessage(
-          token,
-          chatId,
-          messageId,
-          `✅ <b>${quantity.toLocaleString('fa-IR')} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty.toLocaleString('fa-IR')}`,
-          [
-            [{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart', style: 'success' }],
-            [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }],
-            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
-          ],
-          prod.image
-        );
-      } else if (data.startsWith('add_to_cart_')) {
-        const prodId = data.replace('add_to_cart_', '');
-        const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
-        await sendOrEditQuantityPicker(token, chatId, messageId, prod, 1);
-      } else if (data.startsWith('custom_qty_')) {
-        const prodId = data.replace('custom_qty_', '');
-        const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
-        await sendOrEditQuantityPicker(token, chatId, messageId, prod, 1);
-      } else if (data.startsWith('pick_qty_')) {
-        const parts = data.replace('pick_qty_', '').split('_');
-        const prodId = parts[0];
-        const newQty = parseInt(parts[1], 10) || 1;
-        const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
-        await sendOrEditQuantityPicker(token, chatId, messageId, prod, newQty);
       } else if (data === 'noop_qty') {
         await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ callback_query_id: cb.id, text: 'برای تغییر تعداد از دکمه‌های ➕ و ➖ استفاده کنید.' })
         }).catch(() => {});
-      } else if (data.startsWith('confirm_pick_')) {
-        const parts = data.replace('confirm_pick_', '').split('_');
-        const prodId = parts[0];
-        const qtyToAdd = Math.max(1, parseInt(parts[1], 10) || 1);
-        const prod = products.find(p => p.id === prodId);
-        if (!prod) return;
-        const cart = userCarts.get(chatId) || [];
-        const existing = cart.find((i: any) => i.productId === prod.id);
-        if (existing) {
-          existing.quantity += qtyToAdd;
-        } else {
-          cart.push({ productId: prod.id, quantity: qtyToAdd });
-        }
-        userCarts.set(chatId, cart);
-        userStates.delete(chatId);
-        saveAllData();
-
-        const totalQty = cart.reduce((s: number, i: any) => s + i.quantity, 0);
-        let cartTotal = 0;
-        for (const item of cart) {
-          const p = products.find(prodItem => prodItem.id === item.productId);
-          if (p) {
-            const eff = p.discountPercent ? Math.round(p.price * (100 - p.discountPercent) / 100) : p.price;
-            cartTotal += eff * item.quantity;
-          }
-        }
-
-        const confirmText = `✅ <b>${qtyToAdd.toLocaleString('fa-IR')} ${prod.unit}</b> از «${prod.name}» با موفقیت به سبد خرید افزوده شد!\n\n🛒 <b>تعداد کل اقلام در سبد:</b> ${totalQty.toLocaleString('fa-IR')}\n💎 <b>مبلغ کل سبد:</b> ${cartTotal.toLocaleString('fa-IR')} تومان`;
-
-        await sendOrEditBotMessage(
-          token,
-          chatId,
-          messageId,
-          confirmText,
-          [
-            [{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart', style: 'success' }],
-            [{ text: '🍰 ادامه خرید و منوی محصولات', callback_data: 'menu_categories', style: 'primary' }],
-            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
-          ],
-          prod.image
-        );
       } else if (data === 'view_cart') {
         await sendBotCartView(token, chatId, messageId);
       } else if (data === 'cart_remove_item_menu') {

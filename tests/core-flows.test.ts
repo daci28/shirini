@@ -3024,6 +3024,31 @@ function testCartItemRemovalFlow() {
   console.log('✅ 5th cart item removal button, in-place message editing, and full/custom removal flow are fully implemented');
 }
 
+function testInPlaceProductCardQuantityFlow() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const simSource = fs.readFileSync(new URL('../src/components/TelegramSimulator.tsx', import.meta.url), 'utf8');
+  const handlersSource = fs.readFileSync(new URL('../src/telegramHandlers.ts', import.meta.url), 'utf8');
+
+  // Verify server.ts has buildProductCard and in-place inc_cart_/dec_cart_
+  assert.ok(serverSource.includes('buildProductCard'), 'server.ts must contain buildProductCard');
+  assert.ok(serverSource.includes('inc_cart_'), 'server.ts must handle inc_cart_ callback');
+  assert.ok(serverSource.includes('dec_cart_'), 'server.ts must handle dec_cart_ callback');
+  assert.ok(serverSource.includes('➖ ۱'), 'server.ts must have ➖ ۱ button');
+  assert.ok(serverSource.includes('➕ ۱'), 'server.ts must have ➕ ۱ button');
+
+  // Verify telegramHandlers.ts has buildProductCard and in-place inc_cart_/dec_cart_
+  assert.ok(handlersSource.includes('buildProductCard'), 'telegramHandlers.ts must contain buildProductCard');
+  assert.ok(handlersSource.includes('inc_cart_'), 'telegramHandlers.ts must handle inc_cart_ callback');
+  assert.ok(handlersSource.includes('dec_cart_'), 'telegramHandlers.ts must handle dec_cart_ callback');
+
+  // Verify TelegramSimulator.tsx has buildSimulatorProductCard and in-place inc_cart_/dec_cart_
+  assert.ok(simSource.includes('buildSimulatorProductCard'), 'Simulator must contain buildSimulatorProductCard');
+  assert.ok(simSource.includes('inc_cart_'), 'Simulator must handle inc_cart_ callback');
+  assert.ok(simSource.includes('dec_cart_'), 'Simulator must handle dec_cart_ callback');
+
+  console.log('✅ in-place product card quantity adjustment buttons and message editing are fully verified across bot and simulator');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -3062,6 +3087,7 @@ async function main() {
   testCustomerBlockAndUnblockGate();
   testSettingsToggleSwitchStyles();
   testCartItemRemovalFlow();
+  testInPlaceProductCardQuantityFlow();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

@@ -287,6 +287,12 @@ export interface CustomerUser {
   rulesAccepted?: boolean;
   /** Timestamp when terms were accepted. */
   rulesAcceptedAt?: string;
+  /** True when customer is blocked by admin from using the bot. */
+  isBlocked?: boolean;
+  /** When the user was blocked. */
+  blockedAt?: string;
+  /** Reason for blocking. */
+  blockedReason?: string;
   createdAt: string;
   lastActiveAt: string;
 }

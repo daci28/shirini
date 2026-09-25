@@ -2932,6 +2932,73 @@ function testShopNameComesFromSettingsEverywhere() {
   console.log('✅ the shop name comes from the panel settings everywhere');
 }
 
+function testCustomerBlockAndUnblockGate() {
+  const serverSource = fs.readFileSync('server.ts', 'utf8');
+  const typesSource = fs.readFileSync('src/types.ts', 'utf8');
+  const uiSource = fs.readFileSync('src/components/CustomerManager.tsx', 'utf8');
+
+  // Types check
+  assert.ok(/isBlocked\?: boolean;/.test(typesSource), 'CustomerUser must have isBlocked flag');
+  assert.ok(/blockedAt\?: string;/.test(typesSource), 'CustomerUser must have blockedAt timestamp');
+  assert.ok(/blockedReason\?: string;/.test(typesSource), 'CustomerUser must have blockedReason field');
+
+  // Server API check
+  assert.ok(
+    /app\.post\('\/api\/customers\/:id\/block'/.test(serverSource),
+    'Server must expose POST /api/customers/:id/block endpoint',
+  );
+
+  // Live Telegram webhook block check
+  assert.ok(
+    /blockedCustomer[\s\S]*?دسترسی شما به ربات توسط مدیریت مسدود شده است/.test(serverSource),
+    'Server must check and block messages from blocked customers in Telegram',
+  );
+
+  // UI check
+  assert.ok(
+    /onToggleBlockCustomer/.test(uiSource),
+    'CustomerManager must support onToggleBlockCustomer',
+  );
+  assert.ok(
+    /statusFilter/.test(uiSource),
+    'CustomerManager must support status filter for blocked users',
+  );
+  assert.ok(
+    /مسدودسازی کاربر/.test(uiSource),
+    'CustomerManager must have block user modal and action',
+  );
+  assert.ok(
+    /رفع مسدودی/.test(uiSource),
+    'CustomerManager must have unblock user action',
+  );
+
+  console.log('✅ customer blocking and unblocking gate works across backend, bot and admin UI');
+}
+
+function testSettingsToggleSwitchStyles() {
+  const settingsSource = fs.readFileSync('src/components/BotSettings.tsx', 'utf8');
+
+  // Required channels switch structure
+  assert.ok(
+    /handleInputChange\('requiredChannelsEnabled', event\.target\.checked\)[\s\S]*?peer-checked:bg-sky-500/.test(settingsSource),
+    'Forced channels must use standard pill switch',
+  );
+
+  // Store rules switch structure
+  assert.ok(
+    /handleInputChange\('storeRulesEnabled', event\.target\.checked\)[\s\S]*?peer-checked:bg-indigo-600/.test(settingsSource),
+    'Store rules must use matching pill switch',
+  );
+
+  // Unpaid order timeout switch structure
+  assert.ok(
+    /handleInputChange\('unpaidOrderExpiryEnabled', event\.target\.checked\)[\s\S]*?peer-checked:bg-amber-500/.test(settingsSource),
+    'Unpaid order expiry must use matching pill switch',
+  );
+
+  console.log('✅ settings toggle switches use unified pill switch styling');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -2967,6 +3034,8 @@ async function main() {
   testABackupCanRebuildTheShopOnAnotherServer();
   testUnpaidOrdersDisappearOnlyWhenTheyShould();
   testShopNameComesFromSettingsEverywhere();
+  testCustomerBlockAndUnblockGate();
+  testSettingsToggleSwitchStyles();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

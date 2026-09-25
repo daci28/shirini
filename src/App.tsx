@@ -1031,6 +1031,21 @@ export default function App() {
     return saved;
   };
 
+  const handleToggleBlockCustomer = async (customerId: string, blocked: boolean, reason?: string) => {
+    const res = await apiFetch(`/api/customers/${customerId}/block`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocked, reason }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error || 'خطا در تغییر وضعیت مسدودی کاربر');
+    }
+    const updated = await res.json();
+    setCustomers(prev => prev.map(c => (c.id === updated.id || String(c.telegramId) === String(updated.telegramId)) ? updated : c));
+    return updated;
+  };
+
   const handlePanelLogin = async (username: string, password: string) => {
     const response = await window.fetch('/api/auth/login', {
       method: 'POST',
@@ -1195,6 +1210,7 @@ export default function App() {
             onAdjustWallet={handleAdjustWallet}
             onSaveCustomer={handleSaveCustomer}
             onUpdateCustomer={handleUpdateCustomer}
+            onToggleBlockCustomer={handleToggleBlockCustomer}
           />
         )}
 

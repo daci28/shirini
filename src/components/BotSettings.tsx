@@ -1023,35 +1023,28 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
                 <FileText className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white">قوانین و مقررات فروشگاه (تأیید اجباری توسط مشتری)</h3>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 ${
-                    formData.storeRulesEnabled 
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}>
-                    {formData.storeRulesEnabled ? 'فعال' : 'غیرفعال'}
-                  </span>
-                </div>
+                <h3 className="text-base font-bold text-white">قوانین و مقررات فروشگاه (تأیید اجباری توسط مشتری)</h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   نمایش قوانین در سه حالت متن، عکس/پوستر و فایل PDF و الزام مشتری به انتخاب گزینه «موافقم» قبل از استفاده از ربات
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2.5 cursor-pointer bg-slate-800/80 hover:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 transition-all">
+            <label className="inline-flex items-center gap-2.5 cursor-pointer shrink-0">
+              <span className={`text-xs font-semibold ${formData.storeRulesEnabled ? 'text-indigo-300' : 'text-slate-400'}`}>
+                {formData.storeRulesEnabled ? 'فعال' : 'غیرفعال'}
+              </span>
+              <span className="relative inline-flex">
                 <input
                   type="checkbox"
                   checked={Boolean(formData.storeRulesEnabled)}
-                  onChange={(e) => handleInputChange('storeRulesEnabled', e.target.checked)}
-                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900 cursor-pointer"
+                  onChange={(event) => handleInputChange('storeRulesEnabled', event.target.checked)}
+                  className="sr-only peer"
                 />
-                <span className="text-xs font-bold text-white select-none">
-                  {formData.storeRulesEnabled ? 'تأیید قوانین فعال است' : 'تأیید قوانین غیرفعال است'}
-                </span>
-              </label>
-            </div>
+                <span className="w-11 h-6 bg-slate-700 rounded-full peer-checked:bg-indigo-600 transition-colors" />
+                <span className="absolute top-0.5 right-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:-translate-x-5" />
+              </span>
+            </label>
           </div>
 
           {!formData.storeRulesEnabled ? (
@@ -1360,35 +1353,28 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
                 <Clock className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white">مهلت پرداخت و حذف خودکار سفارش‌های بدون فیش</h3>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 ${
-                    formData.unpaidOrderExpiryEnabled 
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}>
-                    {formData.unpaidOrderExpiryEnabled ? 'فعال' : 'غیرفعال'}
-                  </span>
-                </div>
+                <h3 className="text-base font-bold text-white">مهلت پرداخت و حذف خودکار سفارش‌های بدون فیش</h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   حذف اتوماتیک سفارش و فاکتور در صورتی که مشتری پس از مدت زمان مشخص‌شده فیش واریز ارسال نکند
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2.5 cursor-pointer bg-slate-800/80 hover:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 transition-all">
+            <label className="inline-flex items-center gap-2.5 cursor-pointer shrink-0">
+              <span className={`text-xs font-semibold ${formData.unpaidOrderExpiryEnabled ? 'text-amber-300' : 'text-slate-400'}`}>
+                {formData.unpaidOrderExpiryEnabled ? 'فعال' : 'غیرفعال'}
+              </span>
+              <span className="relative inline-flex">
                 <input
                   type="checkbox"
                   checked={Boolean(formData.unpaidOrderExpiryEnabled)}
-                  onChange={(e) => handleInputChange('unpaidOrderExpiryEnabled', e.target.checked)}
-                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 focus:ring-offset-slate-900 cursor-pointer"
+                  onChange={(event) => handleInputChange('unpaidOrderExpiryEnabled', event.target.checked)}
+                  className="sr-only peer"
                 />
-                <span className="text-xs font-bold text-white select-none">
-                  {formData.unpaidOrderExpiryEnabled ? 'حذف خودکار فعال است' : 'حذف خودکار غیرفعال است'}
-                </span>
-              </label>
-            </div>
+                <span className="w-11 h-6 bg-slate-700 rounded-full peer-checked:bg-amber-500 transition-colors" />
+                <span className="absolute top-0.5 right-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:-translate-x-5" />
+              </span>
+            </label>
           </div>
 
           <div className="space-y-4">

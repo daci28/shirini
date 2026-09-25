@@ -5197,6 +5197,48 @@ async function startServer() {
     });
   });
 
+  // Block / unblock customer from bot access
+  app.post('/api/customers/:id/block', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { blocked, reason } = req.body;
+
+    const customerIndex = customers.findIndex(c => c.id === id || String(c.telegramId) === String(id));
+    if (customerIndex === -1) {
+      res.status(404).json({ error: 'کاربر مورد نظر یافت نشد.' });
+      return;
+    }
+
+    const customer = customers[customerIndex];
+    const isBlocking = Boolean(blocked);
+    customer.isBlocked = isBlocking;
+
+    if (isBlocking) {
+      customer.blockedAt = new Date().toISOString();
+      customer.blockedReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : undefined;
+      // Clear user active cart and transient state
+      if (customer.telegramId) {
+        userStates.delete(String(customer.telegramId));
+        userCarts.delete(String(customer.telegramId));
+      }
+      userStates.delete(customer.id);
+      userCarts.delete(customer.id);
+    } else {
+      delete customer.blockedAt;
+      delete customer.blockedReason;
+    }
+
+    saveAllData();
+
+    sendToTelegramTopic(
+      'customers',
+      isBlocking
+        ? `⛔️ <b>مسدودسازی دسترسی مشتری به ربات:</b>\n\n👤 مشتری: <b>${escapeTelegramHtml(customer.name || '---')}</b>\n🆔 شناسه: <code>${customer.telegramId || customer.id}</code>\n${customer.phone ? `📞 تلفن: <code>${customer.phone}</code>\n` : ''}${customer.blockedReason ? `📌 علت: ${escapeTelegramHtml(customer.blockedReason)}\n` : ''}دسترسی این کاربر به تمامی امکانات ربات مسدود شد.`
+        : `✅ <b>رفع مسدودی دسترسی مشتری به ربات:</b>\n\n👤 مشتری: <b>${escapeTelegramHtml(customer.name || '---')}</b>\n🆔 شناسه: <code>${customer.telegramId || customer.id}</code>\nدسترسی کاربر به ربات مجدداً فعال گردید.`
+    );
+
+    res.json(customer);
+  });
+
   // Get wallet transactions history
   app.get('/api/wallet/transactions', (req: Request, res: Response) => {
     res.json(walletTransactions);
@@ -5734,6 +5776,25 @@ async function startServer() {
         }
         await autoSetupGroupTopics(chatId, msg.chat.title, token);
         return;
+      }
+
+      // Check if customer is blocked from bot access
+      if (chatType === 'private') {
+        const senderTelegramId = String(msg.from?.id ?? chatId);
+        const blockedCustomer = customers.find(c => (String(c.telegramId) === senderTelegramId || c.id === senderTelegramId) && c.isBlocked);
+        if (blockedCustomer) {
+          const reasonMsg = blockedCustomer.blockedReason ? `\n\n📌 <b>علت مسدودی:</b> ${escapeTelegramHtml(blockedCustomer.blockedReason)}` : '';
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `⛔️ <b>دسترسی شما به ربات توسط مدیریت مسدود شده است.</b>\nامکان استفاده از خدمات این ربات برای حساب کاربری شما وجود ندارد.${reasonMsg}\n\nجهت پیگیری می‌توانید با پشتیبانی فروشگاه تماس بگیرید.`,
+              parse_mode: 'HTML',
+            }),
+          }).catch(() => undefined);
+          return;
+        }
       }
 
       if (text === '/start') {
@@ -6412,6 +6473,22 @@ async function startServer() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chat_id: chatId, text: tmsg('adminOnlyMessage'), parse_mode: 'HTML' })
         });
+        return;
+      }
+
+      // Check if user is blocked from bot access
+      const blockedCustomer = customers.find(c => (String(c.telegramId) === callbackActorId || c.id === callbackActorId) && c.isBlocked);
+      if (blockedCustomer) {
+        const reasonMsg = blockedCustomer.blockedReason ? `\n\n📌 <b>علت مسدودی:</b> ${escapeTelegramHtml(blockedCustomer.blockedReason)}` : '';
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `⛔️ <b>دسترسی شما به ربات توسط مدیریت مسدود شده است.</b>\nامکان استفاده از خدمات این ربات برای حساب کاربری شما وجود ندارد.${reasonMsg}\n\nجهت پیگیری می‌توانید با پشتیبانی فروشگاه تماس بگیرید.`,
+            parse_mode: 'HTML',
+          }),
+        }).catch(() => undefined);
         return;
       }
 

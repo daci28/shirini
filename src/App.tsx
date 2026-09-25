@@ -6,7 +6,6 @@ import {
   INITIAL_DISCOUNT_CODES, 
   INITIAL_SUPPORT_TICKETS,
   INITIAL_CUSTOMERS,
-  INITIAL_WALLET_TRANSACTIONS,
   INITIAL_BACKUP_SCHEDULE,
   INITIAL_BACKUP_SNAPSHOTS,
   INITIAL_CUSTOM_ORDERS
@@ -20,7 +19,6 @@ import {
   SupportTicket, 
   TicketStatus,
   CustomerUser,
-  WalletTransaction,
   BackupScheduleConfig,
   BackupSnapshot,
   MasterBackupPayload,
@@ -64,7 +62,6 @@ export default function App() {
   const [botSettings, setBotSettings] = useState<BotSettings>(INITIAL_BOT_SETTINGS);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(INITIAL_SUPPORT_TICKETS);
   const [customers, setCustomers] = useState<CustomerUser[]>(INITIAL_CUSTOMERS);
-  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>(INITIAL_WALLET_TRANSACTIONS);
   const [backupSchedule, setBackupSchedule] = useState<BackupScheduleConfig>(INITIAL_BACKUP_SCHEDULE);
   const [backupSnapshots, setBackupSnapshots] = useState<BackupSnapshot[]>(INITIAL_BACKUP_SNAPSHOTS);
   
@@ -154,7 +151,6 @@ export default function App() {
           apiFetch('/api/settings').catch(() => null),
           apiFetch('/api/support/tickets').catch(() => null),
           apiFetch('/api/customers').catch(() => null),
-          apiFetch('/api/wallet/transactions').catch(() => null),
           apiFetch('/api/backup/schedule').catch(() => null),
           apiFetch('/api/backup/snapshots').catch(() => null),
         ]);
@@ -878,7 +874,6 @@ export default function App() {
           if (d.orders) setOrders(d.orders);
           if (d.customOrders) setCustomOrders(d.customOrders);
           if (d.customers) setCustomers(d.customers);
-          if (d.walletTransactions) setWalletTransactions(d.walletTransactions);
           if (d.discounts) setDiscounts(d.discounts);
           if (d.supportTickets) setSupportTickets(d.supportTickets);
           if (d.botSettings) setBotSettings(d.botSettings);
@@ -921,7 +916,6 @@ export default function App() {
           if (d.orders) setOrders(d.orders);
           if (d.customOrders) setCustomOrders(d.customOrders);
           if (d.customers) setCustomers(d.customers);
-          if (d.walletTransactions) setWalletTransactions(d.walletTransactions);
           if (d.discounts) setDiscounts(d.discounts);
           if (d.supportTickets) setSupportTickets(d.supportTickets);
           if (d.botSettings) setBotSettings(d.botSettings);
@@ -955,13 +949,6 @@ export default function App() {
               return [...toAdd, ...prev];
             });
           }
-          if (d.walletTransactions) {
-            setWalletTransactions(prev => {
-              const ids = new Set(prev.map(w => w.id));
-              const toAdd = d.walletTransactions.filter(w => !ids.has(w.id));
-              return [...toAdd, ...prev];
-            });
-          }
         }
         await refreshInvoices().catch((error) => console.warn('Failed to refresh invoices after import:', error));
         return true;
@@ -970,27 +957,6 @@ export default function App() {
       console.error('Failed to import backup payload:', e);
     }
     return false;
-  };
-
-  const handleAdjustWallet = async (customerId: string, amount: number, description: string) => {
-    try {
-      const res = await apiFetch(`/api/customers/${customerId}/wallet-adjust`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, description })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.customer) {
-          setCustomers(prev => prev.map(c => c.id === customerId ? data.customer : c));
-        }
-        if (data.transaction) {
-          setWalletTransactions(prev => [data.transaction, ...prev]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to adjust wallet:', e);
-    }
   };
 
   const handleSaveCustomer = async (data: { name: string; phone: string; address?: string; username?: string; telegramId?: string }) => {
@@ -1204,10 +1170,8 @@ export default function App() {
         {activeTab === 'customers' && (
           <CustomerManager
             customers={customers}
-            walletTransactions={walletTransactions}
             orders={orders}
             customOrders={customOrders}
-            onAdjustWallet={handleAdjustWallet}
             onSaveCustomer={handleSaveCustomer}
             onUpdateCustomer={handleUpdateCustomer}
             onToggleBlockCustomer={handleToggleBlockCustomer}
@@ -1307,7 +1271,6 @@ export default function App() {
             customOrders={customOrders}
             invoices={invoices.filter(invoice => invoice.source === 'manual')}
             customers={customers}
-            walletTransactions={walletTransactions}
             discounts={discounts}
             supportTickets={supportTickets}
             botSettings={botSettings}
@@ -1318,7 +1281,6 @@ export default function App() {
             onRestoreSnapshot={handleRestoreBackupSnapshot}
             onDeleteSnapshot={handleDeleteBackupSnapshot}
             onImportBackup={handleImportBackup}
-            onAdjustWallet={handleAdjustWallet}
           />
         )}
 

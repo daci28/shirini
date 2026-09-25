@@ -67,11 +67,8 @@ async function testTicketUsesTelegramAccountAndKnownPhone() {
     phone: '09121234567',
     username: 'previous_username',
     address: 'تهران',
-    walletBalance: 0,
-    rewardPoints: 0,
     totalOrdersCount: 1,
     totalSpentTomans: 0,
-    tier: 'bronze',
     createdAt: new Date().toISOString(),
     lastActiveAt: new Date().toISOString(),
   }];
@@ -899,9 +896,9 @@ function testInvoiceCustomerTelegramDeliveryContract() {
   const typesSource = fs.readFileSync(new URL('../src/types.ts', import.meta.url), 'utf8');
 
   // The user directory is restored in both navigations, before finance and
-  // catalog paths, and keeps its original data/ledger props.
+  // catalog paths.
   assert.match(appSource, /import \{ CustomerManager \} from '.\/components\/CustomerManager'/);
-  assert.match(appSource, /<CustomerManager[\s\S]{0,500}walletTransactions=\{walletTransactions\}[\s\S]{0,500}onAdjustWallet=\{handleAdjustWallet\}/);
+  assert.match(appSource, /<CustomerManager[\s\S]{0,500}customers=\{customers\}/);
   assert.ok(sidebarSource.indexOf("id: 'customers'") < sidebarSource.indexOf("id: 'invoices'"));
   assert.ok(appSource.indexOf("{ id: 'customers'") < appSource.indexOf("{ id: 'invoices'"));
 
@@ -1080,16 +1077,15 @@ function testSingleProfilePerTelegramAccountAndAddressBook() {
 
   // Startup migration merges legacy duplicates (same telegramId, two records).
   const legacy: any[] = [
-    { id: 'a', telegramId: '777', name: 'مشتری', phone: '0912', address: 'آدرس الف', walletBalance: 100, rewardPoints: 10, totalOrdersCount: 1, totalSpentTomans: 500, tier: 'bronze', source: 'bot', createdAt: '2026-01-01T00:00:00Z', lastActiveAt: '2026-01-02T00:00:00Z' },
-    { id: 'b', telegramId: '777', name: 'نگار کریمی', phone: '', address: 'آدرس ب', walletBalance: 200, rewardPoints: 40, totalOrdersCount: 2, totalSpentTomans: 1500, tier: 'bronze', source: 'bot', createdAt: '2026-02-01T00:00:00Z', lastActiveAt: '2026-03-01T00:00:00Z' },
-    { id: 'm1', telegramId: 'manual_123', name: 'مشتری تلفنی', phone: '021', tier: 'bronze', source: 'manual' as const, walletBalance: 0, rewardPoints: 0, totalOrdersCount: 0, totalSpentTomans: 0 },
+    { id: 'a', telegramId: '777', name: 'مشتری', phone: '0912', address: 'آدرس الف', totalOrdersCount: 1, totalSpentTomans: 500, source: 'bot', createdAt: '2026-01-01T00:00:00Z', lastActiveAt: '2026-01-02T00:00:00Z' },
+    { id: 'b', telegramId: '777', name: 'نگار کریمی', phone: '', address: 'آدرس ب', totalOrdersCount: 2, totalSpentTomans: 1500, source: 'bot', createdAt: '2026-02-01T00:00:00Z', lastActiveAt: '2026-03-01T00:00:00Z' },
+    { id: 'm1', telegramId: 'manual_123', name: 'مشتری تلفنی', phone: '021', source: 'manual' as const, totalOrdersCount: 0, totalSpentTomans: 0 },
   ];
   const merged = dedupeCustomers(legacy);
   assert.equal(merged.length, 2, 'duplicate bot profiles merged; manual users kept separate');
   const botProfile = merged.find((c) => c.telegramId === '777')!;
   assert.equal(botProfile.name, 'نگار کریمی');
   assert.equal(botProfile.phone, '0912');
-  assert.equal(botProfile.walletBalance, 300);
   assert.equal(botProfile.totalOrdersCount, 3);
   assert.equal(botProfile.totalSpentTomans, 2000);
   assert.deepEqual(botProfile.addresses, ['آدرس الف', 'آدرس ب']);
@@ -1266,7 +1262,7 @@ async function testDataFileSurvivesACrashDuringWrite() {
       `import { saveData } from ${JSON.stringify(persistModule)};`,
       // Large enough that a write is always in flight when we kill it.
       "const orders = Array.from({length: 120000}, (_, i) => ({ id: 'ord-' + i, receipt: 'x'.repeat(120) }));",
-      `const base = { products: [], customOrders: [], invoices: [], discounts: [], supportTickets: [], customers: ${JSON.stringify(seedCustomers)}, walletTransactions: [], backupSnapshots: [], backupSchedule: {} };`,
+      `const base = { products: [], customOrders: [], invoices: [], discounts: [], supportTickets: [], customers: ${JSON.stringify(seedCustomers)}, backupSnapshots: [], backupSchedule: {} };`,
       'saveData({ ...base, orders: [{ id: "ord-SEED" }] });',
       'process.send && process.send("seeded");',
       'while (true) { saveData({ ...base, orders }); }',
@@ -1339,7 +1335,7 @@ async function testCorruptedDataFileFallsBackToABackup() {
         `import fs from 'node:fs';`,
         `import path from 'node:path';`,
         `import { saveData, loadData } from ${JSON.stringify(persistModule)};`,
-        `saveData({ products: [], orders: [{ id: 'ord-1' }], customOrders: [], invoices: [], discounts: [], supportTickets: [], customers: [{ id: 'c1', name: 'علی' }], walletTransactions: [], backupSnapshots: [], backupSchedule: {} });`,
+        `saveData({ products: [], orders: [{ id: 'ord-1' }], customOrders: [], invoices: [], discounts: [], supportTickets: [], customers: [{ id: 'c1', name: 'علی' }], backupSnapshots: [], backupSchedule: {} });`,
         `const dataFile = path.join(process.env.DATA_DIR, 'data.json');`,
         // Truncate the live file the way an interrupted write would.
         `fs.writeFileSync(dataFile, fs.readFileSync(dataFile, 'utf8').slice(0, 80));`,
@@ -1452,21 +1448,21 @@ async function testBroadcastAudienceTargeting() {
   const now = Date.parse('2026-09-20T00:00:00.000Z');
   const make = (over: any) => ({
     id: over.id, telegramId: over.telegramId ?? over.id, name: over.name || over.id,
-    phone: '0912', walletBalance: 0, rewardPoints: 0,
+    phone: '0912',
     totalOrdersCount: over.totalOrdersCount ?? 0, totalSpentTomans: 0,
-    tier: over.tier || 'bronze', tags: over.tags,
+    tags: over.tags,
     createdAt: new Date(now).toISOString(),
     lastActiveAt: new Date(now - (over.inactiveDays ?? 0) * day).toISOString(),
   }) as any;
 
   const customers = [
-    make({ id: 'c1', tier: 'vip', totalOrdersCount: 5, tags: ['عروسی'], inactiveDays: 2 }),
-    make({ id: 'c2', tier: 'gold', totalOrdersCount: 2, tags: ['عروسی'], inactiveDays: 10 }),
-    make({ id: 'c3', tier: 'bronze', totalOrdersCount: 0, inactiveDays: 90 }),
-    make({ id: 'c4', tier: 'silver', totalOrdersCount: 3, tags: ['عمده'], inactiveDays: 200 }),
+    make({ id: 'c1', totalOrdersCount: 5, tags: ['عروسی'], inactiveDays: 2 }),
+    make({ id: 'c2', totalOrdersCount: 2, tags: ['عروسی'], inactiveDays: 10 }),
+    make({ id: 'c3', totalOrdersCount: 0, inactiveDays: 90 }),
+    make({ id: 'c4', totalOrdersCount: 3, tags: ['عمده'], inactiveDays: 200 }),
     // No Telegram id: added by an admin in the panel, unreachable by the bot.
-    make({ id: 'c5', telegramId: '', tier: 'vip', totalOrdersCount: 9, tags: ['عروسی'] }),
-    make({ id: 'c6', telegramId: 'guest', tier: 'vip', totalOrdersCount: 1, tags: ['عروسی'] }),
+    make({ id: 'c5', telegramId: '', totalOrdersCount: 9, tags: ['عروسی'] }),
+    make({ id: 'c6', telegramId: 'guest', totalOrdersCount: 1, tags: ['عروسی'] }),
   ];
 
   const ids = (a: any) => resolveBroadcastAudience(customers, a, now).recipients.map((c) => c.id);
@@ -1482,7 +1478,6 @@ async function testBroadcastAudienceTargeting() {
   assert.deepEqual(ids({ type: 'tag', tag: 'دستهٔ خالی' }), [], 'an unknown tag must reach nobody');
   assert.deepEqual(ids({ type: 'tag', tag: '' }), [], 'a blank tag must never fall back to everyone');
 
-  assert.deepEqual(ids({ type: 'tier', tier: 'vip' }), ['c1']);
   assert.deepEqual(ids({ type: 'selected', customerIds: ['c2', 'c4', 'c5'] }), ['c2', 'c4']);
   assert.deepEqual(ids({ type: 'selected', customerIds: [] }), [], 'selecting nobody must reach nobody');
   assert.deepEqual(ids({ type: 'no_orders' }), ['c3']);

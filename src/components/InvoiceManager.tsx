@@ -165,7 +165,6 @@ const paymentMethodOptions: InvoicePaymentMethod[] = [
   'bank_transfer',
   'cash',
   'cash_on_delivery',
-  'wallet',
   'other',
 ];
 

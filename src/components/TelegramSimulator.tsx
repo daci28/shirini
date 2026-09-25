@@ -1604,22 +1604,17 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         );
         return;
       }
-      const totalWallet = customersList.reduce((s, c) => s + (c.walletBalance || 0), 0);
       const totalOrd = customersList.reduce((s, c) => s + (c.totalOrdersCount || 0), 0);
       let introText = `👥 <b>مدیریت کاربران و مشتریان (${toPersianDigits(customersList.length)} نفر)</b>\\n`;
       introText += `────────────────────\\n`;
-      introText += `💳 مجموع کیف‌پول‌ها: <b>${formatPrice(totalWallet)} تومان</b>\\n`;
       introText += `📦 کل سفارشات: <b>${toPersianDigits(totalOrd)} سفارش</b>\\n`;
       introText += `────────────────────\\n\\n`;
       addBotMessage(introText, undefined, undefined, 150);
       customersList.slice(0, 5).forEach((c, idx) => {
-        const tierEmoji = c.tier === 'vip' ? '👑' : c.tier === 'gold' ? '🥇' : c.tier === 'silver' ? '🥈' : '🥉';
-        const tierLabel = c.tier === 'vip' ? 'VIP' : c.tier === 'gold' ? 'طلایی' : c.tier === 'silver' ? 'نقره‌ای' : 'برنزی';
-        let cText = `${tierEmoji} <b>${c.name}</b> (${tierLabel})\\n`;
+        let cText = `👤 <b>${c.name}</b>\\n`;
         cText += `📞 <code>${c.phone || '---'}</code> | @${c.username || c.telegramId}\\n`;
-        cText += `💳 کیف‌پول: <b>${formatPrice(c.walletBalance)}</b> | ⭐️ ${toPersianDigits(c.rewardPoints)}\\n`;
         cText += `📦 ${toPersianDigits(c.totalOrdersCount)} سفارش | مجموع: ${formatPrice(c.totalSpentTomans)}`;
-        addBotMessage(cText, [[{ text: '💳 شارژ کیف‌پول', callback_data: `admin_charge_wallet_${c.id}` }]], undefined, 200 + idx * 150);
+        addBotMessage(cText, undefined, undefined, 200 + idx * 150);
       });
       addBotMessage(
         `💡 برای مدیریت کامل کاربران از تب «کاربران» در پنل تحت وب استفاده فرمایید.`,

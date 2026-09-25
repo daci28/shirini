@@ -10,7 +10,6 @@ import {
   INITIAL_DISCOUNT_CODES, 
   INITIAL_SUPPORT_TICKETS,
   INITIAL_CUSTOMERS,
-  INITIAL_WALLET_TRANSACTIONS,
   INITIAL_BACKUP_SCHEDULE,
   INITIAL_BACKUP_SNAPSHOTS,
   INITIAL_CUSTOM_ORDERS,
@@ -25,7 +24,6 @@ import {
   DiscountCode, 
   SupportTicket, 
   CustomerUser, 
-  WalletTransaction, 
   BackupScheduleConfig, 
   BackupSnapshot, 
   MasterBackupPayload,
@@ -237,7 +235,6 @@ if (!botSettings.webAdminPasswordHash) {
 saveSettings(botSettings);
 let supportTickets: SupportTicket[] = [...INITIAL_SUPPORT_TICKETS];
 let customers: CustomerUser[] = [...INITIAL_CUSTOMERS];
-let walletTransactions: WalletTransaction[] = [...INITIAL_WALLET_TRANSACTIONS];
 let backupSchedule: BackupScheduleConfig = { ...INITIAL_BACKUP_SCHEDULE };
 let broadcasts: BroadcastRecord[] = [];
 let backupSnapshots: BackupSnapshot[] = [...INITIAL_BACKUP_SNAPSHOTS];
@@ -348,7 +345,6 @@ if (persistedData) {
   supportTickets = persistedData.supportTickets || supportTickets;
   customers = persistedData.customers || customers;
   customers = dedupeCustomers(customers);
-  walletTransactions = persistedData.walletTransactions || walletTransactions;
   backupSnapshots = (persistedData.backupSnapshots || backupSnapshots).map(redactBackupSnapshot);
   // Merge rather than replace: an older or partially written file may hold
   // only a couple of keys, and dropping the defaults leaves fields like
@@ -409,7 +405,6 @@ function saveAllData() {
     discounts,
     supportTickets,
     customers,
-    walletTransactions,
     backupSnapshots,
     backupSchedule,
     broadcasts
@@ -2717,7 +2712,7 @@ async function startServer() {
   ]);
   const supportedPaymentMethods = new Set<InvoicePaymentMethod>([
     'cash', 'cash_on_delivery', 'card_to_card', 'online_payment',
-    'online_gateway', 'bank_transfer', 'wallet', 'other',
+    'online_gateway', 'bank_transfer', 'other',
   ]);
   const supportedPaymentStatuses = new Set<InvoicePaymentStatus>([
     'pending', 'submitted', 'confirmed', 'rejected', 'refunded',
@@ -3343,7 +3338,7 @@ async function startServer() {
       audienceLabel: label,
       recipientsCount: recipients.length,
       recipients: recipients.slice(0, 50).map((c) => ({
-        id: c.id, name: c.name, phone: c.phone, tier: c.tier, tags: c.tags || [],
+        id: c.id, name: c.name, phone: c.phone, tags: c.tags || [],
       })),
     });
   });
@@ -4281,8 +4276,7 @@ async function startServer() {
 
   // Helper to generate full master backup payload
   function generateBackupPayload(generatedBy: string = 'Admin-Manual'): MasterBackupPayload {
-    const totalWalletBalances = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
-    const totalEntities = products.length + orders.length + customOrders.length + invoices.length + customers.length + walletTransactions.length + discounts.length + supportTickets.length;
+    const totalEntities = products.length + orders.length + customOrders.length + invoices.length + customers.length + discounts.length + supportTickets.length;
     const nowIso = new Date().toISOString();
 
     const rawData = {
@@ -4291,7 +4285,6 @@ async function startServer() {
       customOrders: JSON.parse(JSON.stringify(customOrders)),
       invoices: JSON.parse(JSON.stringify(invoices)),
       customers: JSON.parse(JSON.stringify(customers)),
-      walletTransactions: JSON.parse(JSON.stringify(walletTransactions)),
       discounts: JSON.parse(JSON.stringify(discounts)),
       supportTickets: JSON.parse(JSON.stringify(supportTickets)),
       // The broadcast history records what was sent to customers and which
@@ -4319,7 +4312,6 @@ async function startServer() {
         generatedBy,
         databaseEngine: 'MasterInMemoryEngine',
         totalEntities,
-        totalWalletBalances,
         storeName: storeName(),
         storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳'
       },
@@ -4347,8 +4339,6 @@ async function startServer() {
       console.error('[backup] Failed to write snapshot file to disk:', e);
     }
 
-    const totalWalletBalance = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
-
     const snapshot: BackupSnapshot = {
       id: `snap-${Date.now()}`,
       filename,
@@ -4363,7 +4353,6 @@ async function startServer() {
         customOrdersCount: customOrders.length,
         invoicesCount: invoices.length,
         customersCount: customers.length,
-        totalWalletBalance,
         discountsCount: discounts.length,
         ticketsCount: supportTickets.length,
         forumTopicsCount: botSettings.forumTopics?.length || 0
@@ -4633,7 +4622,7 @@ async function startServer() {
       if (backupSchedule.notifyTelegramTopic) {
         sendToTelegramTopic(
           'system_backups',
-          `💾 <b>پشتیبان‌گیری خودکار دیتابیس انجام شد:</b>\n\n📁 فایل: <code>${snapshot.filename}</code>\n👥 تعداد مشتریان: <b>${snapshot.stats.customersCount} نفر</b>\n📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>\n💰 مجموع کیف‌پول: <b>${snapshot.stats.totalWalletBalance.toLocaleString('fa-IR')} تومان</b>`
+          `💾 <b>پشتیبان‌گیری خودکار دیتابیس انجام شد:</b>\n\n📁 فایل: <code>${snapshot.filename}</code>\n👥 تعداد مشتریان: <b>${snapshot.stats.customersCount} نفر</b>\n📦 سفارشات: <b>${snapshot.stats.ordersCount}</b>`
         );
       }
     }
@@ -4684,9 +4673,6 @@ async function startServer() {
         }
         if (Array.isArray(importedData.customers)) {
           customers = dedupeCustomers([...importedData.customers]);
-        }
-        if (Array.isArray(importedData.walletTransactions)) {
-          walletTransactions = [...importedData.walletTransactions];
         }
         if (Array.isArray(importedData.discounts)) {
           discounts = [...importedData.discounts];
@@ -4741,12 +4727,6 @@ async function startServer() {
             if (!existingIds.has(c.id)) customers.push(c);
           });
         }
-        if (Array.isArray(importedData.walletTransactions)) {
-          const existingIds = new Set(walletTransactions.map(w => w.id));
-          importedData.walletTransactions.forEach((w: WalletTransaction) => {
-            if (!existingIds.has(w.id)) walletTransactions.push(w);
-          });
-        }
         if (Array.isArray(importedData.discounts)) {
           const existingCodes = new Set(discounts.map(d => d.code.toUpperCase()));
           importedData.discounts.forEach((d: DiscountCode) => {
@@ -4772,8 +4752,6 @@ async function startServer() {
       const fileOutcome = restoreBackupFiles(payload.files);
       const backupHadFiles = Boolean(payload.files && Object.keys(payload.files).length > 0);
 
-      const totalWalletBalance = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
-
       // Persist a completed restore immediately so Railway redeploys cannot
       // discard the restored records or the sanitized settings state.
       saveAllData();
@@ -4782,7 +4760,7 @@ async function startServer() {
       // Notify System Backups Telegram topic
       sendToTelegramTopic(
         'system_backups',
-        `🛡️ <b>عملیات بازیابی و ریستور دیتابیس:</b>\n\n✅ دیتابیس بازگردانی شد.\n🖼 فایل‌های تصویر: <b>${fileOutcome.restored}</b>${fileOutcome.failed.length ? ` (ناموفق: ${fileOutcome.failed.length})` : ''}${backupHadFiles ? '' : ' — این بکاپ تصاویر را همراه نداشت'}\n👥 تعداد مشتریان: <b>${customers.length} نفر</b>\n💰 <b>مجموع موجودی کیف‌پول‌ها:</b> <b>${totalWalletBalance.toLocaleString('fa-IR')} تومان</b> (تضمین عدم کسر موجودی)\n📦 سفارشات عادی: <b>${orders.length} عدد</b>\n🎂 سفارشات دلخواه: <b>${customOrders.length} عدد</b>\n🧾 فاکتورهای دستی: <b>${invoices.length} عدد</b>\n🧁 محصولات: <b>${products.length} قلم</b>`
+        `🛡️ <b>عملیات بازیابی و ریستور دیتابیس:</b>\n\n✅ دیتابیس بازگردانی شد.\n🖼 فایل‌های تصویر: <b>${fileOutcome.restored}</b>${fileOutcome.failed.length ? ` (ناموفق: ${fileOutcome.failed.length})` : ''}${backupHadFiles ? '' : ' — این بکاپ تصاویر را همراه نداشت'}\n👥 تعداد مشتریان: <b>${customers.length} نفر</b>\n📦 سفارشات عادی: <b>${orders.length} عدد</b>\n🎂 سفارشات دلخواه: <b>${customOrders.length} عدد</b>\n🧾 فاکتورهای دستی: <b>${invoices.length} عدد</b>\n🧁 محصولات: <b>${products.length} قلم</b>`
       );
 
       // Never claim a flawless restore without checking. A backup taken before
@@ -4814,13 +4792,11 @@ async function startServer() {
           customOrdersCount: customOrders.length,
           invoicesCount: invoices.length,
           customersCount: customers.length,
-          totalWalletBalance,
           discountsCount: discounts.length,
           ticketsCount: supportTickets.length,
           forumTopicsCount: botSettings.forumTopics?.length || 0
         },
-        restoredEntitiesCount: products.length + orders.length + customOrders.length + invoices.length + customers.length + walletTransactions.length + discounts.length + supportTickets.length,
-        totalWalletBalance
+        restoredEntitiesCount: products.length + orders.length + customOrders.length + invoices.length + customers.length + discounts.length + supportTickets.length
       });
     } catch (err: any) {
       res.status(500).json({ success: false, message: 'خطا در بازیابی اطلاعات: ' + err.message });
@@ -4839,7 +4815,7 @@ async function startServer() {
       const snapshot = createSnapshotInternal('manual', customName);
       sendToTelegramTopic(
         'system_backups',
-        `💾 <b>نقطه بازیابی دستی جدید ثبت شد:</b>\n\n📁 فایل: <code>${snapshot.filename}</code>\n👥 مشتریان: <b>${snapshot.stats.customersCount} نفر</b>\n📦 سفارشات: <b>${snapshot.stats.ordersCount} عدد</b>\n💰 موجودی کیف‌پول: <b>${snapshot.stats.totalWalletBalance.toLocaleString('fa-IR')} تومان</b>`
+        `💾 <b>نقطه بازیابی دستی جدید ثبت شد:</b>\n\n📁 فایل: <code>${snapshot.filename}</code>\n👥 مشتریان: <b>${snapshot.stats.customersCount} نفر</b>\n📦 سفارشات: <b>${snapshot.stats.ordersCount} عدد</b>`
       );
       res.status(201).json({
         success: true,
@@ -4870,25 +4846,22 @@ async function startServer() {
       if (Array.isArray(d.customOrders)) customOrders = [...d.customOrders];
       if (Array.isArray(d.invoices)) invoices = [...d.invoices].filter((invoice: Invoice) => invoice?.source === 'manual');
       if (Array.isArray(d.customers)) customers = dedupeCustomers([...d.customers]);
-      if (Array.isArray(d.walletTransactions)) walletTransactions = [...d.walletTransactions];
       if (Array.isArray(d.discounts)) discounts = [...d.discounts];
       if (Array.isArray(d.supportTickets)) supportTickets = [...d.supportTickets];
       if (d.botSettings) botSettings = { ...botSettings, ...omitSettingsSecrets(d.botSettings) };
 
-      const totalWalletBalance = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
       saveAllData();
       saveSettings(botSettings);
 
       sendToTelegramTopic(
         'system_backups',
-        `🛡️ <b>بازیابی موفق به نسخه پشتیبان «${snap.filename}»:</b>\n\n👥 مشتریان: <b>${customers.length} نفر</b>\n📦 سفارشات: <b>${orders.length} عدد</b>\n💰 موجودی کل کیف‌پول‌ها: <b>${totalWalletBalance.toLocaleString('fa-IR')} تومان</b>`
+        `🛡️ <b>بازیابی موفق به نسخه پشتیبان «${snap.filename}»:</b>\n\n👥 مشتریان: <b>${customers.length} نفر</b>\n📦 سفارشات: <b>${orders.length} عدد</b>`
       );
 
       res.json({
         success: true,
         message: `نسخه پشتیبان «${snap.filename}» با موفقیت اعمال گردید.`,
-        stats: snap.stats,
-        totalWalletBalance
+        stats: snap.stats
       });
     } catch (err: any) {
       res.status(500).json({ success: false, message: 'خطا در بازیابی: ' + err.message });
@@ -4989,7 +4962,7 @@ async function startServer() {
   });
 
   // ==========================================
-  // --- Customers & Wallets API ---
+  // --- Customers API ---
   // ==========================================
 
   // Get all customers
@@ -5000,7 +4973,7 @@ async function startServer() {
   // Create or update customer
   app.post('/api/customers', (req: Request, res: Response) => {
     try {
-      const { id, telegramId, name, phone, username, address, walletBalance } = req.body;
+      const { id, telegramId, name, phone, username, address } = req.body;
       const normalizedPhone = typeof phone === 'string' ? phone.trim() : (phone || '');
       const normalizedName = typeof name === 'string' ? name.trim() : (name || '');
       const existingIndex = customers.findIndex(c => c.id === id || (telegramId && String(c.telegramId) === String(telegramId)));
@@ -5036,11 +5009,8 @@ async function startServer() {
           address: address || '',
           addresses: address ? [String(address).trim()].filter(Boolean) : [],
           source: telegramId ? 'bot' : 'manual',
-          walletBalance: Number(walletBalance) || 0,
-          rewardPoints: 50,
           totalOrdersCount: 0,
           totalSpentTomans: 0,
-          tier: 'bronze',
           createdAt: new Date().toISOString(),
           lastActiveAt: new Date().toISOString()
         };
@@ -5058,7 +5028,7 @@ async function startServer() {
   });
 
   // Admin edit of a customer's identity/contact details. Only whitelisted
-  // fields can change here (never wallet, points, stats or tier).
+  // fields can change here.
   app.put('/api/customers/:id', (req: Request, res: Response) => {
     try {
       const index = customers.findIndex(c => c.id === req.params.id);
@@ -5155,48 +5125,6 @@ async function startServer() {
     res.json({ success: true, tag, action, changed });
   });
 
-  // Adjust customer wallet balance
-  app.post('/api/customers/:id/wallet-adjust', (req: Request, res: Response) => {
-    const { id } = req.params;
-    const { amount, type = 'admin_adjustment', description = 'تغییر موجودی توسط مدیریت' } = req.body;
-
-    const customerIndex = customers.findIndex(c => c.id === id);
-    if (customerIndex === -1) {
-      res.status(404).json({ error: 'کاربر یافت نشد.' });
-      return;
-    }
-
-    const delta = Number(amount) || 0;
-    const currentBalance = customers[customerIndex].walletBalance || 0;
-    const newBalance = Math.max(0, currentBalance + delta);
-    customers[customerIndex].walletBalance = newBalance;
-
-    const transaction: WalletTransaction = {
-      id: `wtx-${Date.now()}`,
-      customerId: id,
-      customerName: customers[customerIndex].name,
-      type: type as any,
-      amount: delta,
-      description,
-      createdAt: new Date().toISOString(),
-      balanceAfter: newBalance
-    };
-
-    walletTransactions.unshift(transaction);
-
-    // Notify finance topic if significant
-    sendToTelegramTopic(
-      'finance',
-      `👛 <b>تغییر موجودی کیف پول مشتری:</b>\n\n👤 مشتری: <b>${customers[customerIndex].name}</b>\n💵 مبلغ تغییر: <b>${delta > 0 ? `+${delta.toLocaleString('fa-IR')}` : delta.toLocaleString('fa-IR')} تومان</b>\n💰 موجودی نهایی: <b>${newBalance.toLocaleString('fa-IR')} تومان</b>\n📝 علت: ${description}`
-    );
-
-    res.json({
-      success: true,
-      customer: customers[customerIndex],
-      transaction
-    });
-  });
-
   // Block / unblock customer from bot access
   app.post('/api/customers/:id/block', (req: Request, res: Response) => {
     const { id } = req.params;
@@ -5237,11 +5165,6 @@ async function startServer() {
     );
 
     res.json(customer);
-  });
-
-  // Get wallet transactions history
-  app.get('/api/wallet/transactions', (req: Request, res: Response) => {
-    res.json(walletTransactions);
   });
 
   // Telegram helper functions for live bot polling
@@ -6968,7 +6891,6 @@ async function startServer() {
           });
         }
         text += `\n📦 <b>تعداد سفارش‌ها:</b> ${(customer.totalOrdersCount || 0).toLocaleString('fa-IR')}\n`;
-        text += `💰 <b>اعتبار کیف پول:</b> ${(customer.walletBalance || 0).toLocaleString('fa-IR')} تومان\n`;
         text += `\n⚠️ اگر نام، شماره تلفن یا آدرس‌ها اشتباه است، برای اصلاح به <b>پشتیبانی</b> پیام بدهید.`;
 
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -7989,7 +7911,7 @@ async function startServer() {
         }
         let text = `👥 <b>مشتریان (${customers.length} نفر):</b>\n\n`;
         for (const c of customers.slice(0, 10)) {
-          text += `${c.name} - <code>${c.phone || '---'}</code>\n💳 ${c.walletBalance.toLocaleString()} تومان | ${c.totalOrdersCount} سفارش\n\n`;
+          text += `${c.name} - <code>${c.phone || '---'}</code>\n📦 ${c.totalOrdersCount} سفارش\n\n`;
         }
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',

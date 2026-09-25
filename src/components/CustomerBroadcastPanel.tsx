@@ -22,7 +22,6 @@ export const CustomerBroadcastPanel: React.FC<CustomerBroadcastPanelProps> = ({ 
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [audienceType, setAudienceType] = useState<BroadcastAudienceType>('all');
   const [audienceTag, setAudienceTag] = useState('');
-  const [audienceTier, setAudienceTier] = useState<CustomerUser['tier']>('vip');
   const [audienceDays, setAudienceDays] = useState(30);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [audienceSearch, setAudienceSearch] = useState('');
@@ -37,7 +36,6 @@ export const CustomerBroadcastPanel: React.FC<CustomerBroadcastPanelProps> = ({ 
   const buildAudience = (): BroadcastAudience => {
     switch (audienceType) {
       case 'tag': return { type: 'tag', tag: audienceTag };
-      case 'tier': return { type: 'tier', tier: audienceTier };
       case 'selected': return { type: 'selected', customerIds: selectedCustomerIds };
       case 'recent_buyers':
       case 'inactive': return { type: audienceType, days: audienceDays };
@@ -153,7 +151,6 @@ export const CustomerBroadcastPanel: React.FC<CustomerBroadcastPanelProps> = ({ 
                 ['all', '👥 همهٔ مشتریان'],
                 ['tag', '🏷️ دسته‌بندی دلخواه'],
                 ['selected', '✅ انتخاب دستی'],
-                ['tier', '⭐ سطح مشتری'],
                 ['no_orders', '🕓 بدون خرید'],
                 ['recent_buyers', '🔥 خریداران اخیر'],
                 ['inactive', '💤 غیرفعال‌ها'],
@@ -192,19 +189,6 @@ export const CustomerBroadcastPanel: React.FC<CustomerBroadcastPanelProps> = ({ 
                   </select>
                 )}
               </div>
-            )}
-
-            {audienceType === 'tier' && (
-              <select
-                value={audienceTier}
-                onChange={(e) => setAudienceTier(e.target.value as CustomerUser['tier'])}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-pink-500"
-              >
-                <option value="bronze">برنزی</option>
-                <option value="silver">نقره‌ای</option>
-                <option value="gold">طلایی</option>
-                <option value="vip">ویژه (VIP)</option>
-              </select>
             )}
 
             {(audienceType === 'recent_buyers' || audienceType === 'inactive') && (

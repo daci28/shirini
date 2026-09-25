@@ -270,11 +270,8 @@ export interface CustomerUser {
   address?: string;
   /** Address book: every new delivery address the customer provides is kept. */
   addresses?: string[];
-  walletBalance: number; // in Tomans (کیف پول مشتری)
-  rewardPoints: number; // امتیاز باشگاه مشتریان
   totalOrdersCount: number;
   totalSpentTomans: number;
-  tier: 'bronze' | 'silver' | 'gold' | 'vip';
   /** 'bot' = created from Telegram activity; 'manual' = added by an admin in the panel. */
   source?: 'bot' | 'manual';
   /**
@@ -301,7 +298,6 @@ export interface CustomerUser {
 export type BroadcastAudienceType =
   | 'all'
   | 'tag'
-  | 'tier'
   | 'selected'
   | 'no_orders'
   | 'recent_buyers'
@@ -311,8 +307,6 @@ export interface BroadcastAudience {
   type: BroadcastAudienceType;
   /** Required when type === 'tag'. */
   tag?: string;
-  /** Required when type === 'tier'. */
-  tier?: CustomerUser['tier'];
   /** Customer ids, required when type === 'selected'. */
   customerIds?: string[];
   /** Day window for 'recent_buyers' / 'inactive'. Defaults to 30. */
@@ -408,7 +402,6 @@ export type InvoicePaymentMethod =
   | 'online_payment'
   | 'online_gateway'
   | 'bank_transfer'
-  | 'wallet'
   | 'other';
 
 export type InvoicePaymentStatus = 'pending' | 'submitted' | 'confirmed' | 'rejected' | 'refunded';
@@ -563,7 +556,7 @@ export interface BackupSnapshotStats {
   productsCount: number;
   ordersCount: number;
   customersCount: number;
-  totalWalletBalance: number;
+  totalWalletBalance?: number;
   discountsCount: number;
   ticketsCount: number;
   forumTopicsCount: number;
@@ -581,7 +574,7 @@ export interface MasterBackupPayload {
     generatedBy: string;
     databaseEngine: string;
     totalEntities: number;
-    totalWalletBalances: number;
+    totalWalletBalances?: number;
     storeName: string;
     storePhone: string;
     /** How many attachment files travel inside this backup. */
@@ -603,7 +596,7 @@ export interface MasterBackupPayload {
     /** Standalone manual invoices. Order-backed invoices are regenerated from orders. */
     invoices?: Invoice[];
     customers: CustomerUser[];
-    walletTransactions: WalletTransaction[];
+    walletTransactions?: WalletTransaction[];
     discounts: DiscountCode[];
     /** History of messages broadcast to customers, including their pictures. */
     broadcasts?: BroadcastRecord[];

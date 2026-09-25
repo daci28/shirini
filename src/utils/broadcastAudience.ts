@@ -1,12 +1,5 @@
 import { BroadcastAudience, CustomerUser } from '../types';
 
-const TIER_LABELS: Record<string, string> = {
-  bronze: 'برنزی',
-  silver: 'نقره‌ای',
-  gold: 'طلایی',
-  vip: 'ویژه (VIP)',
-};
-
 const DEFAULT_WINDOW_DAYS = 30;
 
 /**
@@ -43,11 +36,6 @@ export function resolveBroadcastAudience(
         label: `برچسب: ${tag}`,
       };
     }
-    case 'tier':
-      return {
-        recipients: reachable.filter((c) => c.tier === audience.tier),
-        label: `سطح مشتری: ${TIER_LABELS[String(audience.tier)] || audience.tier}`,
-      };
     case 'selected': {
       const ids = new Set((audience.customerIds || []).map(String));
       return {

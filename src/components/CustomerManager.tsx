@@ -5,17 +5,9 @@ import {
   MapPin, 
   MessageCircle, 
   ShoppingBag, 
-  Wallet, 
-  Star, 
-  Crown, 
-  Award, 
   Search,
   Calendar,
-  CreditCard,
-  TrendingUp,
   User,
-  Filter,
-  Trash2,
   X,
   Package,
   Clock,
@@ -25,19 +17,16 @@ import {
   ChefHat,
   AlertCircle,
   Ban,
-  ShieldCheck,
-  ShieldAlert
+  ShieldCheck
 } from 'lucide-react';
-import { CustomerUser, WalletTransaction, Order, CustomPastryOrder } from '../types';
+import { CustomerUser, Order, CustomPastryOrder } from '../types';
 import { formatPrice, toPersianDigits, formatDatePersian } from '../utils/formatters';
 import { matchesSearchValues } from '../utils/search';
 
 interface CustomerManagerProps {
   customers: CustomerUser[];
-  walletTransactions: WalletTransaction[];
   orders: Order[];
   customOrders?: CustomPastryOrder[];
-  onAdjustWallet?: (customerId: string, amount: number, description: string) => Promise<void>;
   onSaveCustomer?: (data: { name: string; phone: string; address?: string; username?: string; telegramId?: string }) => Promise<void>;
   onUpdateCustomer?: (customerId: string, data: { name?: string; phone?: string; addresses?: string[] }) => Promise<CustomerUser | void>;
   onToggleBlockCustomer?: (customerId: string, blocked: boolean, reason?: string) => Promise<CustomerUser | void>;
@@ -45,21 +34,15 @@ interface CustomerManagerProps {
 
 export const CustomerManager: React.FC<CustomerManagerProps> = ({
   customers,
-  walletTransactions,
   orders,
   customOrders = [],
-  onAdjustWallet,
   onSaveCustomer,
   onUpdateCustomer,
   onToggleBlockCustomer
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTier, setSelectedTier] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerUser | null>(null);
-  const [adjustingCustomer, setAdjustingCustomer] = useState<CustomerUser | null>(null);
-  const [adjustAmount, setAdjustAmount] = useState<number>(50000);
-  const [adjustReason, setAdjustReason] = useState<string>('شارژ هدیه وفاداری');
   const [showOnlyWithOrders, setShowOnlyWithOrders] = useState(false);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '', username: '', telegramId: '' });
@@ -236,71 +219,21 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
       ]),
     ]);
 
-    const matchesTier = selectedTier === 'all' || customer.tier === selectedTier;
     const matchesOrders = !showOnlyWithOrders || customer.totalOrdersCount > 0;
     const matchesStatus = 
       statusFilter === 'all' || 
       (statusFilter === 'active' && !customer.isBlocked) || 
       (statusFilter === 'blocked' && Boolean(customer.isBlocked));
 
-    return matchesSearch && matchesTier && matchesOrders && matchesStatus;
+    return matchesSearch && matchesOrders && matchesStatus;
   });
 
   // Calculate totals
-  const totalWalletBalance = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
   const totalOrders = customers.reduce((sum, c) => sum + (c.totalOrdersCount || 0), 0);
   const totalSpent = customers.reduce((sum, c) => sum + (c.totalSpentTomans || 0), 0);
   const customersWithOrders = customers.filter(c => c.totalOrdersCount > 0).length;
   const newCustomers = customers.filter(c => c.totalOrdersCount === 0).length;
   const blockedCustomersCount = customers.filter(c => c.isBlocked).length;
-
-  const handlePerformAdjust = async () => {
-    if (!adjustingCustomer || !onAdjustWallet) return;
-    try {
-      await onAdjustWallet(adjustingCustomer.id, adjustAmount, adjustReason);
-      setAdjustingCustomer(null);
-      setAdjustAmount(50000);
-      setAdjustReason('شارژ هدیه وفاداری');
-    } catch (e: any) {
-      alert('خطا در تغییر موجودی: ' + e.message);
-    }
-  };
-
-  const getTierIcon = (tier: string) => {
-    switch (tier) {
-      case 'vip': return <Crown className="w-4 h-4" />;
-      case 'gold': return <Award className="w-4 h-4" />;
-      case 'silver': return <Star className="w-4 h-4" />;
-      default: return <User className="w-4 h-4" />;
-    }
-  };
-
-  const getTierBadge = (tier: string) => {
-    switch (tier) {
-      case 'vip':
-        return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
-      case 'gold':
-        return 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
-      case 'silver':
-        return 'bg-slate-400/20 text-slate-200 border border-slate-400/30';
-      default:
-        return 'bg-slate-700 text-slate-300 border border-slate-600';
-    }
-  };
-
-  const getTierLabel = (tier: string) => {
-    switch (tier) {
-      case 'vip': return 'VIP ویژه';
-      case 'gold': return 'طلایی';
-      case 'silver': return 'نقره‌ای';
-      default: return 'برنزی';
-    }
-  };
-
-  // Get wallet transactions for selected customer
-  const getCustomerTransactions = (customerId: string) => {
-    return walletTransactions.filter(t => t.customerId === customerId);
-  };
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
@@ -339,17 +272,17 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
-              پایگاه داده مشتریان، باشگاه وفاداری و مسدودسازی
+              پایگاه داده مشتریان، سفارشات و مسدودسازی
             </h2>
             <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
-              مشاهده اطلاعات کامل مشتریان، موجودی کیف پول، تاریخچه خرید و تراکنش‌ها. امکان بلاک و رفع مسدودی کاربران، ویرایش مشخصات و شارژ کیف پول.
+              مشاهده اطلاعات کامل مشتریان، تاریخچه خرید و آدرس‌ها. امکان مسدودسازی (بلاک) و رفع مسدودی کاربران ربات تلگرام و ویرایش مشخصات.
             </p>
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 hover:border-indigo-500/30 transition-colors">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium">کل مشتریان</span>
@@ -372,26 +305,14 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
           </div>
         </div>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 hover:border-rose-500/30 transition-colors">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 hover:border-amber-500/30 transition-colors">
           <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium">کاربران مسدود (بلاک)</span>
-            <Ban className="w-4 h-4 text-rose-400" />
+            <span className="text-xs font-medium">مشتریان بدون سفارش</span>
+            <User className="w-4 h-4 text-amber-400" />
           </div>
           <div>
-            <span className={`text-xl sm:text-2xl font-bold ${blockedCustomersCount > 0 ? 'text-rose-400' : 'text-slate-400'}`}>
-              {toPersianDigits(blockedCustomersCount)}
-            </span>
+            <span className="text-xl sm:text-2xl font-bold text-amber-400">{toPersianDigits(newCustomers)}</span>
             <span className="text-xs text-slate-400 mr-1">نفر</span>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 hover:border-emerald-500/30 transition-colors">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-medium">موجودی کیف‌پول‌ها</span>
-            <Wallet className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div>
-            <span className="text-lg sm:text-xl font-bold text-emerald-400">{formatPrice(totalWalletBalance)}</span>
           </div>
         </div>
 
@@ -406,10 +327,10 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
           </div>
         </div>
 
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 hover:border-pink-500/30 transition-colors">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 hover:border-pink-500/30 transition-colors col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium">مجموع خریدها</span>
-            <TrendingUp className="w-4 h-4 text-pink-400" />
+            <ShoppingBag className="w-4 h-4 text-pink-400" />
           </div>
           <div>
             <span className="text-lg sm:text-xl font-bold text-white">{formatPrice(totalSpent)}</span>
@@ -452,61 +373,40 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
           </button>
         </div>
 
-        {/* Filter Rows: Status and Tiers */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-          {/* Status filter */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
-            <span className="text-[11px] text-slate-400 whitespace-nowrap">وضعیت حساب:</span>
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                statusFilter === 'all'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-              }`}
-            >
-              همه ({toPersianDigits(customers.length)})
-            </button>
-            <button
-              onClick={() => setStatusFilter('active')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                statusFilter === 'active'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-              }`}
-            >
-              فعال ({toPersianDigits(customers.length - blockedCustomersCount)})
-            </button>
-            <button
-              onClick={() => setStatusFilter('blocked')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 ${
-                statusFilter === 'blocked'
-                  ? 'bg-rose-600 text-white shadow-md'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
-              }`}
-            >
-              <Ban className="w-3 h-3 text-rose-400" />
-              <span>مسدود شده ({toPersianDigits(blockedCustomersCount)})</span>
-            </button>
-          </div>
-
-          {/* Tier filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-            <span className="text-[11px] text-slate-400 whitespace-nowrap">سطح:</span>
-            {['all', 'vip', 'gold', 'silver', 'bronze'].map((tier) => (
-              <button
-                key={tier}
-                onClick={() => setSelectedTier(tier)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  selectedTier === tier
-                    ? 'bg-slate-700 text-white shadow-md border border-slate-600 font-bold'
-                    : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
-                }`}
-              >
-                {tier === 'all' ? 'همه' : getTierLabel(tier)}
-              </button>
-            ))}
-          </div>
+        {/* Filter Row: Status */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pt-1">
+          <span className="text-[11px] text-slate-400 whitespace-nowrap">وضعیت دسترسی:</span>
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              statusFilter === 'all'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+            }`}
+          >
+            همه کاربران ({toPersianDigits(customers.length)})
+          </button>
+          <button
+            onClick={() => setStatusFilter('active')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              statusFilter === 'active'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+            }`}
+          >
+            فعال ({toPersianDigits(customers.length - blockedCustomersCount)})
+          </button>
+          <button
+            onClick={() => setStatusFilter('blocked')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+              statusFilter === 'blocked'
+                ? 'bg-rose-600 text-white shadow-md'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
+            }`}
+          >
+            <Ban className="w-3.5 h-3.5 text-rose-400" />
+            <span>مسدود شده ({toPersianDigits(blockedCustomersCount)})</span>
+          </button>
         </div>
       </div>
 
@@ -534,8 +434,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${customer.isBlocked ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : getTierBadge(customer.tier)}`}>
-                      {customer.isBlocked ? <Ban className="w-5 h-5 text-rose-400" /> : getTierIcon(customer.tier)}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${customer.isBlocked ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
+                      {customer.isBlocked ? <Ban className="w-5 h-5 text-rose-400" /> : <User className="w-5 h-5 text-indigo-400" />}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -548,9 +448,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getTierBadge(customer.tier)}`}>
-                          {getTierLabel(customer.tier)}
-                        </span>
                         {getSourceBadge(customer)}
                         <span className="text-xs text-slate-400">@{customer.username || customer.telegramId}</span>
                       </div>
@@ -573,13 +470,9 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                     <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
                     <span>{toPersianDigits(customer.totalOrdersCount)} سفارش</span>
                   </div>
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="font-bold text-emerald-400">{formatPrice(customer.walletBalance)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <Star className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{toPersianDigits(customer.rewardPoints)} امتیاز</span>
+                  <div className="col-span-2 flex items-center gap-2 text-slate-300">
+                    <Package className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>مجموع خرید: <b>{formatPrice(customer.totalSpentTomans)}</b></span>
                   </div>
                 </div>
 
@@ -635,7 +528,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                           e.stopPropagation();
                           setUnblockingCustomer(customer);
                         }}
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-500/40 text-[11px] font-medium flex items-center gap-1 transition-all"
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-500/40 text-[11px] font-medium flex items-center gap-1 transition-all"
                         title="رفع مسدودی کاربر"
                       >
                         <ShieldCheck className="w-3 h-3" />
@@ -648,7 +541,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                           setBlockingCustomer(customer);
                           setBlockReason('');
                         }}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 hover:border-rose-800/50 text-slate-400 border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-all"
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 hover:border-rose-800/50 text-slate-400 border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-all"
                         title="مسدودسازی کاربر (بلاک)"
                       >
                         <Ban className="w-3 h-3 text-rose-400" />
@@ -661,20 +554,10 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                         setSelectedCustomer(customer);
                         openEditCustomer(customer);
                       }}
-                      className="px-2.5 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white border border-indigo-500/40 text-[11px] font-medium flex items-center gap-1"
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600/90 hover:bg-indigo-500 text-white border border-indigo-500/40 text-[11px] font-medium flex items-center gap-1"
                     >
                       <User className="w-3 h-3" />
                       <span>ویرایش</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAdjustingCustomer(customer);
-                      }}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[11px] font-medium flex items-center gap-1"
-                    >
-                      <CreditCard className="w-3 h-3" />
-                      <span>شارژ</span>
                     </button>
                   </div>
                 </div>
@@ -719,7 +602,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                   <span>حساب کاربری مسدود است</span>
                 </div>
                 <p className="text-[11px] text-rose-300/90 leading-relaxed">
-                  دسترسی این کاربر به ربات تلگرام قطع شده است و امکان مشاهده منو، ثبت سفارش یا ارسال پیام به پشتیبانی را ندارد.
+                  دسترسی این کاربر به ربات تلگرام قطع شده است و امکان مشاهده منو، ثبت سفارش یا ارسال پیام را ندارد.
                 </p>
                 {selectedCustomer.blockedAt && (
                   <div className="text-[11px] text-slate-300">
@@ -751,14 +634,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 block mb-1">شناسه تلگرام:</span>
                 <span className="font-mono text-white">{selectedCustomer.telegramId}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                <span className="text-slate-400 block mb-1">موجودی کیف‌پول:</span>
-                <span className="font-bold text-emerald-400">{formatPrice(selectedCustomer.walletBalance)} تومان</span>
-              </div>
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                <span className="text-slate-400 block mb-1">امتیاز وفاداری:</span>
-                <span className="font-bold text-amber-400">{toPersianDigits(selectedCustomer.rewardPoints)} ⭐️</span>
               </div>
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 block mb-1">تعداد کل سفارشات:</span>
@@ -801,16 +676,10 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 )}
               </div>
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400 block mb-1">سطح وفاداری:</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getTierBadge(selectedCustomer.tier)}`}>
-                  {getTierLabel(selectedCustomer.tier)}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 block mb-1">منشأ کاربر:</span>
                 <span className="inline-flex">{getSourceBadge(selectedCustomer)}</span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 col-span-2">
                 <span className="text-slate-400 block mb-1">تاریخ عضویت:</span>
                 <span className="text-white">{formatDatePersian(selectedCustomer.createdAt)}</span>
               </div>
@@ -840,32 +709,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             {item.productName} ({item.quantity} {item.unit}){idx < order.items.length - 1 ? '، ' : ''}
                           </span>
                         ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Wallet Transactions */}
-            {getCustomerTransactions(selectedCustomer.id).length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-sm font-bold text-white flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-emerald-400" />
-                  تاریخچه تراکنش‌های کیف‌پول
-                </h5>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {getCustomerTransactions(selectedCustomer.id).map((tx) => (
-                    <div key={tx.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-slate-300">{tx.description}</span>
-                        <span className={`font-bold ${tx.amount > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {tx.amount > 0 ? '+' : ''}{formatPrice(tx.amount)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500">
-                        <span>{formatDatePersian(tx.createdAt)}</span>
-                        <span>موجودی پس از: {formatPrice(tx.balanceAfter)}</span>
                       </div>
                     </div>
                   ))}
@@ -915,16 +758,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                 >
                   <User className="w-3.5 h-3.5" />
                   <span>ویرایش مشخصات</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedCustomer(null);
-                    setAdjustingCustomer(selectedCustomer);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5"
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>شارژ کیف‌پول</span>
                 </button>
               </div>
             </div>
@@ -1063,70 +896,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>{savingUnblock ? 'در حال اعمال...' : 'تأیید و رفع مسدودی'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Adjust Wallet Modal */}
-      {adjustingCustomer && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-emerald-400" />
-                شارژ کیف‌پول ({adjustingCustomer.name})
-              </h4>
-              <button
-                onClick={() => setAdjustingCustomer(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-1">
-              <div className="flex justify-between text-slate-400">
-                <span>موجودی فعلی:</span>
-                <span className="font-bold text-emerald-400">{formatPrice(adjustingCustomer.walletBalance)} تومان</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300">مبلغ تغییر (تومان - منفی برای کسر):</label>
-              <input
-                type="number"
-                value={adjustAmount}
-                onChange={(e) => setAdjustAmount(Number(e.target.value))}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300">علت تغییر:</label>
-              <input
-                type="text"
-                value={adjustReason}
-                onChange={(e) => setAdjustReason(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setAdjustingCustomer(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
-              >
-                انصراف
-              </button>
-              <button
-                type="button"
-                onClick={handlePerformAdjust}
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
-              >
-                اعمال در کیف‌پول
               </button>
             </div>
           </div>

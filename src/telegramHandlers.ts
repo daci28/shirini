@@ -762,7 +762,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
       [{ text: `🎟️ کدهای تخفیف (${ctx.discounts.length})`, callback_data: 'admin_discounts_list' }, { text: `💬 پشتیبانی و تیکت‌ها (${openTickets})`, callback_data: 'admin_support_list' }],
       [{ text: `🛡️ مدیران ربات (${1 + (ctx.botSettings.adminTelegramIds?.length || 0)})`, callback_data: 'admin_admins_manager' }, { text: `🏷️ سوپرگروه تاپیک‌دار (۸ تاپیک)`, callback_data: 'admin_forum_topics' }],
       [{ text: `📊 آمار و تحلیل فروش`, callback_data: 'admin_sales_stats' }, { text: `💾 بکاپ و دیتابیس`, callback_data: 'admin_backup' }],
-      [{ text: `✍️ شخصی‌سازی متون`, callback_data: 'admin_texts' }, { text: `⚙️ تنظیمات و حساب بانکی`, callback_data: 'admin_settings' }],
+      [{ text: `⚙️ تنظیمات و حساب بانکی`, callback_data: 'admin_settings' }],
       [{ text: `📢 ارسال پیام همگانی`, callback_data: 'admin_broadcast' }],
       [{ text: `👥 بازگشت به دید مشتری`, callback_data: 'back_to_main' }]
     ]);
@@ -1653,7 +1653,7 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
     if (ctx.customers.length === 0) { await tgSend(ctx, '👥 مشتری‌ای ثبت نشده.', [[{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]]); return true; }
     let text = `👥 <b>مشتریان (${ctx.customers.length}):</b>\n\n`;
     for (const c of ctx.customers.slice(0, 15)) {
-      text += `👤 <b>${c.name}</b>\n📞 <code>${c.phone || '---'}</code> | @${c.username || '---'}\n💳 ${(c.walletBalance || 0).toLocaleString()} | ${c.totalOrdersCount} سفارش | ${c.tier}\n\n`;
+      text += `👤 <b>${c.name}</b>\n📞 <code>${c.phone || '---'}</code> | @${c.username || '---'}\n📦 ${c.totalOrdersCount} سفارش\n\n`;
     }
     await tgSend(ctx, text, [[{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]]);
     return true;
@@ -1735,28 +1735,6 @@ export async function handleAdminCallback(ctx: TelegramContext, data: string): P
   if (data === 'admin_edit_shipping') {
     ctx.userStates.set(ctx.chatId, { mode: 'edit_shipping_fee' });
     await tgSend(ctx, `✏️ <b>هزینه پیک:</b>\nفعلی: ${ctx.botSettings.shippingFee || 0}\n\nمبلغ جدید (عدد):`, [[{ text: '❌ انصراف', callback_data: 'admin_settings' }]]);
-    return true;
-  }
-
-  // Texts customization
-  if (data === 'admin_texts') {
-    await tgSend(ctx, `✍️ <b>شخصی‌سازی متون ربات:</b>\n\nپیام خوش‌آمد: ${ctx.botSettings.welcomeMessage ? '✅' : '❌'}\nپیام راهنما: ${ctx.botSettings.helpMessage ? '✅' : '❌'}\nپیام سفارش موفق: ${ctx.botSettings.orderSuccessMessage ? '✅' : '❌'}`, [
-      [{ text: '✏️ پیام خوش‌آمد', callback_data: 'admin_edit_welcome' }],
-      [{ text: '✏️ پیام راهنما', callback_data: 'admin_edit_help' }],
-      [{ text: '👨‍🍳 ادمین', callback_data: 'admin_panel' }]
-    ]);
-    return true;
-  }
-
-  if (data === 'admin_edit_welcome') {
-    ctx.userStates.set(ctx.chatId, { mode: 'edit_welcome' });
-    await tgSend(ctx, '✏️ پیام خوش‌آمد جدید را ارسال کنید:', [[{ text: '❌ انصراف', callback_data: 'admin_texts' }]]);
-    return true;
-  }
-
-  if (data === 'admin_edit_help') {
-    ctx.userStates.set(ctx.chatId, { mode: 'edit_help' });
-    await tgSend(ctx, '✏️ پیام راهنما جدید را ارسال کنید:', [[{ text: '❌ انصراف', callback_data: 'admin_texts' }]]);
     return true;
   }
 
@@ -1912,17 +1890,6 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
         [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories' }]
       ]);
     }
-    return true;
-  }
-
-  if (state.mode === 'edit_welcome') {
-    ctx.botSettings.welcomeMessage = text; ctx.userStates.delete(ctx.chatId);
-    await tgSend(ctx, '✅ پیام خوش‌آمد ذخیره شد!', [[{ text: '✍️ متون', callback_data: 'admin_texts' }]]);
-    return true;
-  }
-  if (state.mode === 'edit_help') {
-    ctx.botSettings.helpMessage = text; ctx.userStates.delete(ctx.chatId);
-    await tgSend(ctx, '✅ پیام راهنما ذخیره شد!', [[{ text: '✍️ متون', callback_data: 'admin_texts' }]]);
     return true;
   }
 

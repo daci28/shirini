@@ -75,11 +75,8 @@ export function upsertBotCustomer(
       username: input.username ? String(input.username) : '',
       address: String(input.address || '').trim() || undefined,
       addresses: [],
-      walletBalance: 0,
-      rewardPoints: 10,
       totalOrdersCount: 0,
       totalSpentTomans: 0,
-      tier: 'bronze',
       source: input.source || 'bot',
       createdAt: now,
       lastActiveAt: now,
@@ -106,7 +103,7 @@ export function upsertBotCustomer(
 
 /**
  * Startup migration: merge legacy duplicate profiles so that every Telegram
- * account maps to exactly one customer. Stats/wallet/order counts are summed,
+ * account maps to exactly one customer. Stats/order counts are summed,
  * the best-known name/phone/username win, and all addresses are accumulated.
  * Records without a real Telegram id (admin-created manual users) are kept
  * individually and never merged.
@@ -142,8 +139,6 @@ export function dedupeCustomers(rawCustomers: CustomerUser[]): CustomerUser[] {
       username: record.username || existing.username,
       address: record.address || existing.address,
       addresses: Array.from(book).slice(-20),
-      walletBalance: (existing.walletBalance || 0) + (record.walletBalance || 0),
-      rewardPoints: Math.max(existing.rewardPoints || 0, record.rewardPoints || 0),
       totalOrdersCount: (existing.totalOrdersCount || 0) + (record.totalOrdersCount || 0),
       totalSpentTomans: (existing.totalSpentTomans || 0) + (record.totalSpentTomans || 0),
       createdAt: [existing.createdAt, record.createdAt].filter(Boolean).sort()[0] || existing.createdAt,

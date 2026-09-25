@@ -1,4 +1,4 @@
-import { Product, BotSettings, Order, DiscountCode, SupportTicket, CustomerUser, WalletTransaction, BackupScheduleConfig, BackupSnapshot, CustomPastryOrder, ForumTopicConfig } from '../types';
+import { Product, BotSettings, Order, DiscountCode, SupportTicket, CustomerUser, BackupScheduleConfig, BackupSnapshot, CustomPastryOrder, ForumTopicConfig } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [];
 
@@ -144,8 +144,6 @@ export const INITIAL_DISCOUNT_CODES: DiscountCode[] = [];
 export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [];
 
 export const INITIAL_CUSTOMERS: CustomerUser[] = [];
-
-export const INITIAL_WALLET_TRANSACTIONS: WalletTransaction[] = [];
 
 export const INITIAL_CUSTOM_ORDERS: CustomPastryOrder[] = [];
 

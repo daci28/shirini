@@ -16,7 +16,6 @@ import {
   Copy, 
   Check, 
   Layers, 
-  Wallet, 
   Users, 
   ShoppingBag, 
   Cake, 
@@ -37,7 +36,6 @@ import {
   BackupScheduleConfig, 
   BackupSnapshot, 
   CustomerUser, 
-  WalletTransaction, 
   Product, 
   Order, 
   DiscountCode, 
@@ -55,7 +53,6 @@ interface BackupManagerProps {
   /** Only standalone manual invoices are persisted in client exports. */
   invoices: Invoice[];
   customers: CustomerUser[];
-  walletTransactions: WalletTransaction[];
   discounts: DiscountCode[];
   supportTickets: SupportTicket[];
   botSettings: BotSettings;
@@ -66,7 +63,6 @@ interface BackupManagerProps {
   onRestoreSnapshot: (id: string) => Promise<boolean>;
   onDeleteSnapshot: (id: string) => Promise<boolean>;
   onImportBackup: (payload: MasterBackupPayload, mode: 'overwrite' | 'merge') => Promise<boolean>;
-  onAdjustWallet?: (customerId: string, amount: number, description: string) => Promise<void>;
 }
 
 export const BackupManager: React.FC<BackupManagerProps> = ({
@@ -75,7 +71,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   customOrders,
   invoices,
   customers,
-  walletTransactions,
   discounts,
   supportTickets,
   botSettings,
@@ -85,8 +80,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   onCreateSnapshot,
   onRestoreSnapshot,
   onDeleteSnapshot,
-  onImportBackup,
-  onAdjustWallet
+  onImportBackup
 }) => {
   const [activeSection, setActiveSection] = useState<'instant' | 'schedule' | 'restore' | 'snapshots'>('instant');
   const [scheduleState, setScheduleState] = useState<BackupScheduleConfig>(backupSchedule);
@@ -109,15 +103,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
   const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
   const [copiedJson, setCopiedJson] = useState(false);
   const [inspectSnapshot, setInspectSnapshot] = useState<BackupSnapshot | null>(null);
-  const [adjustingCustomer, setAdjustingCustomer] = useState<CustomerUser | null>(null);
-  const [adjustAmount, setAdjustAmount] = useState<number>(50000);
-  const [adjustReason, setAdjustReason] = useState<string>('شارژ هدیه وفاداری');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Calculate totals
-  const totalWalletBalance = customers.reduce((sum, c) => sum + (c.walletBalance || 0), 0);
-  const totalEntities = products.length + orders.length + customOrders.length + invoices.length + customers.length + walletTransactions.length + discounts.length + supportTickets.length;
+  const totalEntities = products.length + orders.length + customOrders.length + invoices.length + customers.length + discounts.length + supportTickets.length;
 
   // Handle Instant Download
   const handleDownloadMasterBackup = () => {
@@ -129,7 +119,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
         customOrders,
         invoices,
         customers,
-        walletTransactions,
         discounts,
         supportTickets,
         botSettings,
@@ -146,7 +135,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
           generatedBy: 'Admin-Manual-UI',
           databaseEngine: 'MasterInMemoryEngine',
           totalEntities,
-          totalWalletBalances: totalWalletBalance,
           storeName: botSettings.storeName || 'فروشگاه',
           storePhone: botSettings.storePhone || '۰۲۱-۸۸۹۹۲۲۳۳'
         },
@@ -177,7 +165,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       customOrders,
       invoices,
       customers,
-      walletTransactions,
       discounts,
       supportTickets,
       botSettings,
@@ -194,7 +181,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
         generatedBy: 'Admin-Clipboard',
         databaseEngine: 'MasterInMemoryEngine',
         totalEntities,
-        totalWalletBalances: totalWalletBalance,
         storeName: botSettings.storeName,
         storePhone: botSettings.storePhone
       },
@@ -304,7 +290,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             generatedBy: 'Uploaded-Backup-File',
             databaseEngine: 'MasterInMemoryEngine',
             totalEntities: (data.products?.length || 0) + (data.orders?.length || 0) + (data.customers?.length || 0),
-            totalWalletBalances: data.customers?.reduce((s: number, c: any) => s + (c.walletBalance || 0), 0) || 0,
             storeName: data.botSettings?.storeName || 'فروشگاه',
             storePhone: data.botSettings?.storePhone || ''
           },
@@ -314,7 +299,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
             customOrders: data.customOrders || [],
             invoices: data.invoices || [],
             customers: data.customers || [],
-            walletTransactions: data.walletTransactions || [],
             discounts: data.discounts || [],
             supportTickets: data.supportTickets || [],
             botSettings: data.botSettings || botSettings,
@@ -338,7 +322,7 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
     try {
       const ok = await onImportBackup(selectedFileContent, restoreMode);
       if (ok) {
-        setRestoreSuccess('دیتابیس با موفقیت بازگردانی شد! تمامی کیف‌پول‌ها، سفارشات و تنظیمات اعمال گردیدند.');
+        setRestoreSuccess('دیتابیس با موفقیت بازگردانی شد! تمامی داده‌ها، سفارشات و تنظیمات اعمال گردیدند.');
         setSelectedFileContent(null);
       } else {
         setFileValidationError('خطا در انجام عملیات بازگردانی بر روی سرور.');
@@ -347,17 +331,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
       setFileValidationError('خطای سیستمی: ' + e.message);
     } finally {
       setIsRestoring(false);
-    }
-  };
-
-  // Adjust customer wallet balance
-  const handlePerformAdjust = async () => {
-    if (!adjustingCustomer || !onAdjustWallet) return;
-    try {
-      await onAdjustWallet(adjustingCustomer.id, adjustAmount, adjustReason);
-      setAdjustingCustomer(null);
-    } catch (e: any) {
-      alert('خطا در تغییر موجودی: ' + e.message);
     }
   };
 
@@ -598,8 +571,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                     <span className="font-semibold text-white">{totalEntities} رکورد</span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>مجموع اعتبار کیف‌پول‌ها:</span>
-                    <span className="font-bold text-emerald-400">{formatPrice(totalWalletBalance)}</span>
+                    <span>مشتریان و سفارش‌ها:</span>
+                    <span className="font-bold text-emerald-400">{customers.length + orders.length} رکورد</span>
                   </div>
                   <button
                     onClick={handleDownloadMasterBackup}
@@ -658,13 +631,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                     metadata: {
                       storeName: botSettings.storeName,
                       totalEntities,
-                      totalWalletBalances: totalWalletBalance,
                     },
                     data: {
                       products: `[${products.length} Products Included]`,
                       orders: `[${orders.length} Orders Included]`,
-                      customers: `[${customers.length} Customers with Wallets Included]`,
-                      walletTransactions: `[${walletTransactions.length} Transactions Included]`,
+                      customers: `[${customers.length} Customers Included]`,
                       discounts: `[${discounts.length} Discounts Included]`,
                       supportTickets: `[${supportTickets.length} Support Tickets Included]`,
                       botSettings: "{Bot Settings, Bank Cards, Forum Topics Included}"
@@ -1073,15 +1044,6 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                   <span className="font-bold text-white">{selectedFileContent.data.customers?.length || 0} کاربر</span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/30">
-                  <span className="text-slate-400 block mb-1">مجموع کیف‌پول‌ها در فایل:</span>
-                  <span className="font-bold text-emerald-400">
-                    {formatPrice(
-                      selectedFileContent.data.customers?.reduce((s, c) => s + (c.walletBalance || 0), 0) || 0
-                    )}
-                  </span>
-                </div>
-
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <span className="text-slate-400 block mb-1">سفارشات:</span>
                   <span className="font-bold text-white">{selectedFileContent.data.orders?.length || 0} سفارش</span>
@@ -1100,6 +1062,11 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <span className="text-slate-400 block mb-1">تیکت‌های پشتیبانی:</span>
                   <span className="font-bold text-white">{selectedFileContent.data.supportTickets?.length || 0} تیکت</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-slate-400 block mb-1">فاکتورهای مستقل:</span>
+                  <span className="font-bold text-white">{selectedFileContent.data.invoices?.length || 0} فاکتور</span>
                 </div>
               </div>
 
@@ -1272,8 +1239,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                       <span className="font-bold text-slate-200">{snap.stats.customersCount} نفر</span>
                     </div>
                     <div className="p-2 rounded-xl bg-slate-950/80 text-center">
-                      <span className="text-slate-500 block">کیف‌پول‌ها:</span>
-                      <span className="font-bold text-emerald-400">{formatPrice(snap.stats.totalWalletBalance)}</span>
+                      <span className="text-slate-500 block">محصولات:</span>
+                      <span className="font-bold text-slate-200">{snap.stats.productsCount} قلم</span>
                     </div>
                     <div className="p-2 rounded-xl bg-slate-950/80 text-center">
                       <span className="text-slate-500 block">سفارشات:</span>
@@ -1326,8 +1293,8 @@ export const BackupManager: React.FC<BackupManagerProps> = ({
                 <span className="font-bold text-white">{inspectSnapshot.stats.customersCount} نفر</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-800/60">
-                <span className="text-slate-400">کل سرمایه کیف‌پول‌ها:</span>
-                <span className="font-bold text-emerald-400">{formatPrice(inspectSnapshot.stats.totalWalletBalance)}</span>
+                <span className="text-slate-400">تعداد محصولات:</span>
+                <span className="font-bold text-white">{inspectSnapshot.stats.productsCount} قلم</span>
               </div>
             </div>
 

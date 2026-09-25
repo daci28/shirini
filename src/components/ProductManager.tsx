@@ -214,26 +214,29 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                     {product.category}
                   </span>
 
-                  {/* Product Code */}
-                  {product.productCode && (
-                    <span className="absolute top-3 left-16 px-2 py-1 rounded-lg text-[10px] font-mono font-bold bg-amber-500/20 backdrop-blur-md text-amber-300 border border-amber-500/40">
-                      کد: {product.productCode}
-                    </span>
-                  )}
+                  {/* Top-Left Action & Code Badges */}
+                  <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-row-reverse max-w-[65%]">
+                    {/* Availability Badge */}
+                    <button
+                      onClick={() => onUpdateProduct(product.id, { isAvailable: !product.isAvailable })}
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold backdrop-blur-md transition-all flex items-center gap-1 shrink-0 ${
+                        product.isAvailable
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                      }`}
+                      title="کلیک برای تغییر موجودی در بات تلگرام"
+                    >
+                      <span className={`w-2 h-2 rounded-full ${product.isAvailable ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                      <span>{product.isAvailable ? 'موجود' : 'ناموجود'}</span>
+                    </button>
 
-                  {/* Availability Badge */}
-                  <button
-                    onClick={() => onUpdateProduct(product.id, { isAvailable: !product.isAvailable })}
-                    className={`absolute top-3 left-3 px-2.5 py-1 rounded-xl text-[11px] font-bold backdrop-blur-md transition-all flex items-center gap-1 ${
-                      product.isAvailable
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
-                    }`}
-                    title="کلیک برای تغییر موجودی در بات تلگرام"
-                  >
-                    <span className={`w-2 h-2 rounded-full ${product.isAvailable ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-                    <span>{product.isAvailable ? 'موجود' : 'ناموجود'}</span>
-                  </button>
+                    {/* Product Code */}
+                    {product.productCode && (
+                      <span className="px-2 py-1 rounded-xl text-[10px] font-mono font-bold bg-slate-900/85 backdrop-blur-md text-amber-300 border border-amber-500/40 shrink-0">
+                        کد: {product.productCode}
+                      </span>
+                    )}
+                  </div>
 
                   {/* Quick Change Photo Button */}
                   <button

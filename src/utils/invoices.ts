@@ -66,7 +66,6 @@ export const invoicePaymentMethodLabels: Record<InvoicePaymentMethod, string> = 
   online_payment: 'پرداخت آنلاین',
   online_gateway: 'درگاه پرداخت',
   bank_transfer: 'حواله بانکی',
-  wallet: 'کیف پول',
   other: 'سایر',
 };
 

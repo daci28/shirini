@@ -97,6 +97,8 @@ export const INITIAL_BOT_SETTINGS: BotSettings = {
   shabaNumber: '',
   shippingFee: 0,
   freeShippingThreshold: 0,
+  unpaidOrderExpiryEnabled: false,
+  unpaidOrderExpiryMinutes: 30,
   adminTelegramId: '',
   adminTelegramIds: [],
   welcomeMessage: '',

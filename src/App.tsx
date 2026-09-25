@@ -374,6 +374,46 @@ export default function App() {
     }
   };
 
+  // Delete an order permanently
+  const handleDeleteOrder = async (id: string) => {
+    try {
+      const response = await apiFetch(`/api/orders/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        setOrders(prev => prev.filter(o => o.id !== id));
+        void refreshInvoices().catch(() => undefined);
+      } else {
+        const err = await readApiError(response, 'حذف سفارش ناموفق بود.');
+        alert(err);
+      }
+    } catch (e) {
+      console.error('Failed to delete order:', e);
+      alert('خطا در حذف سفارش');
+    }
+  };
+
+  // Check and purge expired unpaid orders now
+  const handlePurgeExpiredOrders = async () => {
+    try {
+      const response = await apiFetch('/api/orders/expire-unpaid', { method: 'POST' });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.removedCount > 0) {
+          setOrders(data.allOrders || []);
+          void refreshInvoices().catch(() => undefined);
+          alert(`✅ تعداد ${data.removedCount} سفارش پرداخت‌نشده با موفقیت حذف گردید.`);
+        } else {
+          alert('ℹ️ هیچ سفارش پرداخت‌نشده منقضی‌شده‌ای برای حذف یافت نشد.');
+        }
+      } else {
+        const err = await readApiError(response, 'بررسی سفارش‌ها ناموفق بود.');
+        alert(err);
+      }
+    } catch (e) {
+      console.error('Failed to purge expired orders:', e);
+      alert('خطا در بررسی سفارش‌های منقضی');
+    }
+  };
+
   // Add Discount Code Handler
   const handleAddDiscount = async (newDiscountData: Omit<DiscountCode, 'id' | 'createdAt'>): Promise<DiscountCode> => {
     const tempDiscount: DiscountCode = {
@@ -1185,6 +1225,10 @@ export default function App() {
             orders={orders}
             customers={customers}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            botSettings={botSettings}
+            onNavigateSettings={() => setActiveTab('settings')}
+            onDeleteOrder={handleDeleteOrder}
+            onPurgeExpiredOrders={handlePurgeExpiredOrders}
           />
         )}
 

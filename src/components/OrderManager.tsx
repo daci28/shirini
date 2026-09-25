@@ -15,9 +15,14 @@ import {
   Calendar,
   ChefHat,
   Search,
-  ZoomIn
+  ZoomIn,
+  Trash2,
+  Timer,
+  AlertTriangle,
+  Settings,
+  RefreshCw
 } from 'lucide-react';
-import { CustomerUser, Order, OrderStatus } from '../types';
+import { CustomerUser, Order, OrderStatus, BotSettings } from '../types';
 import { formatPrice, toPersianDigits } from '../utils/formatters';
 import { formatIranianDateTime } from '../utils/iranianDate';
 import { matchesSearchValues, normalizeSearchValue } from '../utils/search';
@@ -28,6 +33,10 @@ interface OrderManagerProps {
   orders: Order[];
   customers?: CustomerUser[];
   onUpdateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
+  botSettings?: BotSettings;
+  onNavigateSettings?: () => void;
+  onDeleteOrder?: (id: string) => Promise<void>;
+  onPurgeExpiredOrders?: () => Promise<void>;
 }
 
 // Kept as a named export for existing order-search consumers and tests.
@@ -37,12 +46,19 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   orders,
   customers = [],
   onUpdateOrderStatus,
+  botSettings,
+  onNavigateSettings,
+  onDeleteOrder,
+  onPurgeExpiredOrders,
 }) => {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeReceiptModal, setActiveReceiptModal] = useState<Order | null>(null);
   const [zoomedReceiptImage, setZoomedReceiptImage] = useState<string | null>(null);
   const [receiptDecisionLoading, setReceiptDecisionLoading] = useState<string | null>(null);
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   // Telegram file_ids are not URLs — resolve them through the server's file proxy.
   const receiptImageSrc = (receipt: string | undefined): string | undefined =>
@@ -51,6 +67,57 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
   const canReviewReceipt = (order: Order) => Boolean(order.paymentReceiptImage)
     && (order.status === 'pending_payment' || order.status === 'paid_checking')
     && !['confirmed', 'rejected'].includes(order.receiptReviewStatus || '');
+
+  // Check if an order is awaiting a payment receipt from the customer
+  const isAwaitingReceipt = (order: Order) =>
+    order.paymentMethod !== 'cash_on_delivery' &&
+    (order.status === 'paid_checking' || order.status === 'pending_payment') &&
+    !order.paymentReceiptImage &&
+    order.receiptReviewStatus !== 'confirmed';
+
+  // Calculate payment expiration status
+  const getOrderExpiryInfo = (order: Order) => {
+    if (!isAwaitingReceipt(order)) return null;
+    const expiryMinutes = botSettings?.unpaidOrderExpiryMinutes ?? 30;
+    const isEnabled = Boolean(botSettings?.unpaidOrderExpiryEnabled);
+    const placedTime = new Date(order.createdAt).getTime();
+    if (!Number.isFinite(placedTime)) return null;
+    const elapsedMinutes = Math.floor((Date.now() - placedTime) / (60 * 1000));
+    const remainingMinutes = Math.max(0, expiryMinutes - elapsedMinutes);
+    return {
+      isEnabled,
+      expiryMinutes,
+      elapsedMinutes,
+      remainingMinutes,
+      isExpired: isEnabled && remainingMinutes <= 0,
+    };
+  };
+
+  // Count orders awaiting customer receipt
+  const pendingReceiptsOrdersCount = orders.filter(isAwaitingReceipt).length;
+
+  const handleConfirmDelete = async () => {
+    if (!orderToDelete || !onDeleteOrder) return;
+    setIsDeletingOrder(true);
+    try {
+      await onDeleteOrder(orderToDelete.id);
+      setOrderToDelete(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
+  const handleRunPurge = async () => {
+    if (!onPurgeExpiredOrders) return;
+    setIsPurging(true);
+    try {
+      await onPurgeExpiredOrders();
+    } finally {
+      setIsPurging(false);
+    }
+  };
 
   // Approve / reject a payment receipt (notifies the customer via the bot)
   const handleReceiptDecision = async (order: Order, approved: boolean) => {
@@ -239,6 +306,70 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
         </div>
       </div>
 
+      {/* Auto-Expiry Notification Bar */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+            botSettings?.unpaidOrderExpiryEnabled
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+              : 'bg-slate-800 text-slate-400 border border-slate-700'
+          }`}>
+            <Clock className="w-5 h-5" />
+          </div>
+          <div className="min-w-0 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-white">حذف خودکار سفارش‌های بدون فیش:</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                botSettings?.unpaidOrderExpiryEnabled
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}>
+                {botSettings?.unpaidOrderExpiryEnabled 
+                  ? `فعال (${toPersianDigits(botSettings.unpaidOrderExpiryMinutes ?? 30)} دقیقه مهلت)`
+                  : 'غیرفعال'
+                }
+              </span>
+              {pendingReceiptsOrdersCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  {toPersianDigits(pendingReceiptsOrdersCount)} سفارش در انتظار فیش
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {botSettings?.unpaidOrderExpiryEnabled
+                ? `سفارش‌هایی که تا ${toPersianDigits(botSettings.unpaidOrderExpiryMinutes ?? 30)} دقیقه فیش واریز دریافت نکنند، به‌صورت خودکار همراه با فاکتور حذف می‌شوند.`
+                : 'برای جلوگیری از انباشت سفارش‌های پرداخت‌نشده، می‌توانید حذف خودکار را در تنظیمات فعال کنید.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {onPurgeExpiredOrders && botSettings?.unpaidOrderExpiryEnabled && (
+            <button
+              type="button"
+              onClick={handleRunPurge}
+              disabled={isPurging}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+              title="بررسی فوری سفارش‌ها و پاکسازی سفارش‌های منقضی‌شده"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isPurging ? 'animate-spin' : ''}`} />
+              <span>{isPurging ? 'در حال پاکسازی...' : 'پاکسازی فوری منقضی‌ها'}</span>
+            </button>
+          )}
+
+          {onNavigateSettings && (
+            <button
+              type="button"
+              onClick={onNavigateSettings}
+              className="px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>تنظیم مهلت پرداخت</span>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Filter Tabs */}
       <div className="flex w-full min-w-0 items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         <button
@@ -318,6 +449,29 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                           {order.paymentMethod === 'cash_on_delivery' ? '💵 در محل' : '💳 آنلاین'}
                         </span>
+                        {(() => {
+                          const expInfo = getOrderExpiryInfo(order);
+                          if (!expInfo) return null;
+                          if (expInfo.isEnabled) {
+                            return expInfo.isExpired ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 font-bold animate-pulse">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>مهلت پرداخت به پایان رسیده (در نوبت حذف)</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 font-medium">
+                                <Clock className="w-3 h-3" />
+                                <span>مهلت پرداخت: {toPersianDigits(expInfo.remainingMinutes)} دقیقه مانده</span>
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>در انتظار فیش</span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -542,12 +696,65 @@ export const OrderManager: React.FC<OrderManagerProps> = ({
                         <span>لغو سفارش</span>
                       </button>
                     )}
+
+                    {onDeleteOrder && (
+                      <button
+                        type="button"
+                        onClick={() => setOrderToDelete(order)}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-800/50 text-xs font-semibold transition-all flex items-center gap-1 mr-auto"
+                        title="حذف کامل این سفارش از سیستم"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>حذف سفارش</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 text-slate-100 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">حذف سفارش #{orderToDelete.orderNumber}</h3>
+                <p className="text-xs text-slate-400">مشتری: {orderToDelete.customerName}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              آیا از حذف این سفارش اطمینان دارید؟ با حذف سفارش، فاکتور متناظر نیز از سیستم پاک خواهد شد.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingOrder}
+                onClick={() => setOrderToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingOrder}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingOrder ? 'در حال حذف...' : 'تأیید و حذف'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -30,7 +30,9 @@ import {
   EyeOff,
   Radio,
   Plus,
-  Trash2
+  Trash2,
+  Clock,
+  Timer
 } from 'lucide-react';
 import { BotSettings, ForumTopicConfig, RequiredChannel, CustomerUser } from '../types';
 import { CustomerBroadcastPanel } from './CustomerBroadcastPanel';
@@ -939,6 +941,7 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
           )}
         </div>
 
+        {/* Shipping Fee Section */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-lg space-y-4">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
             <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
@@ -981,50 +984,132 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
               </p>
             </div>
           </div>
+        </div>
 
-          {/* Removing orders the customer never paid for */}
-          <div className="mt-5 p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-4">
-            <div className="flex items-start justify-between gap-3">
+        {/* Payment Timeout & Unpaid Order Auto-Expiration Section */}
+        <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 shadow-xl space-y-5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shadow-md shadow-amber-500/10">
+                <Clock className="w-6 h-6" />
+              </div>
               <div>
-                <p className="text-xs font-bold text-white">حذف خودکار سفارش پرداخت‌نشده</p>
-                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                  اگر مشتری تا مدت تعیین‌شده فیش واریزی نفرستد، سفارش و فاکتورش حذف می‌شود.
-                  سفارش‌های «پرداخت در محل» و سفارش‌هایی که فیششان رسیده شامل نمی‌شوند.
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white">مهلت پرداخت و حذف خودکار سفارش‌های بدون فیش</h3>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 ${
+                    formData.unpaidOrderExpiryEnabled 
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' 
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {formData.unpaidOrderExpiryEnabled ? 'فعال' : 'غیرفعال'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  حذف اتوماتیک سفارش و فاکتور در صورتی که مشتری پس از مدت زمان مشخص‌شده فیش واریز ارسال نکند
                 </p>
               </div>
-              <input
-                type="checkbox"
-                checked={Boolean(formData.unpaidOrderExpiryEnabled)}
-                onChange={(e) => handleInputChange('unpaidOrderExpiryEnabled', e.target.checked)}
-                className="w-4 h-4 shrink-0 mt-1 rounded text-rose-600 focus:ring-rose-500 focus:ring-offset-slate-900"
-              />
             </div>
 
-            {formData.unpaidOrderExpiryEnabled && (
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2.5 cursor-pointer bg-slate-800/80 hover:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-700 transition-all">
+                <input
+                  type="checkbox"
+                  checked={Boolean(formData.unpaidOrderExpiryEnabled)}
+                  onChange={(e) => handleInputChange('unpaidOrderExpiryEnabled', e.target.checked)}
+                  className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 focus:ring-offset-slate-900 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-white select-none">
+                  {formData.unpaidOrderExpiryEnabled ? 'حذف خودکار فعال است' : 'حذف خودکار غیرفعال است'}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-4">
               <div className="space-y-2">
-                <label className="block text-[11px] font-semibold text-slate-400">
-                  بعد از چند دقیقه حذف شود؟
+                <label className="block text-xs font-semibold text-slate-300">
+                  مهلت ارسال فیش پرداخت (مدت زمان به دقیقه):
                 </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={43200}
-                    value={formData.unpaidOrderExpiryMinutes ?? 30}
-                    onChange={(e) => handleInputChange(
-                      'unpaidOrderExpiryMinutes',
-                      Math.min(43200, Math.max(1, parseInt(e.target.value, 10) || 1)),
-                    )}
-                    className="w-28 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-rose-500 font-mono text-center"
-                  />
-                  <span className="text-[11px] text-slate-500">دقیقه (حداقل ۱، حداکثر ۴۳۲۰۰)</span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={43200}
+                      value={formData.unpaidOrderExpiryMinutes ?? 30}
+                      onChange={(e) => handleInputChange(
+                        'unpaidOrderExpiryMinutes',
+                        Math.min(43200, Math.max(1, parseInt(e.target.value, 10) || 1)),
+                      )}
+                      className="w-32 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-amber-500 font-mono text-center"
+                    />
+                    <span className="text-xs text-slate-400">دقیقه</span>
+                  </div>
+
+                  {/* Preset quick buttons */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-slate-400">انتخاب سریع:</span>
+                    {[
+                      { label: '۱۵ دقیقه', val: 15 },
+                      { label: '۳۰ دقیقه (پیش‌فرض)', val: 30 },
+                      { label: '۴۵ دقیقه', val: 45 },
+                      { label: '۱ ساعت', val: 60 },
+                      { label: '۲ ساعت', val: 120 },
+                      { label: '۲۴ ساعت', val: 1440 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.val}
+                        type="button"
+                        onClick={() => handleInputChange('unpaidOrderExpiryMinutes', preset.val)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                          formData.unpaidOrderExpiryMinutes === preset.val
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 font-bold shadow-sm'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-[11px] text-rose-300/90 leading-relaxed">
-                  ⚠️ حذف برگشت‌ناپذیر است. سفارش از پنل و از «پیگیری سفارشات» مشتری پاک می‌شود
-                  و به مشتری پیام لغو فرستاده می‌شود.
-                </p>
               </div>
-            )}
+
+              {formData.unpaidOrderExpiryEnabled ? (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-2">
+                  <div className="flex items-start gap-2 text-xs text-amber-200 leading-relaxed">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <p>
+                      اگر مشتری سفارش کارت‌به‌کارت یا آنلاین ثبت کند و تا <b>{formData.unpaidOrderExpiryMinutes ?? 30} دقیقه</b> هیچ فیشی ارسال نکند، سفارش و فاکتور آن به‌صورت اتوماتیک لغو و حذف خواهند شد.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-300 pt-2 border-t border-amber-500/20">
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>فاکتور به‌طور خودکار از لیست فاکتورها پاک می‌شود</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>پیام لغو به چت تلگرام مشتری ارسال می‌شود</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>گزارش حذف به سوپرگروه تاپیک‌دار ارسال می‌شود</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>سفارش‌های پرداخت در محل یا دارای فیش حذف نمی‌شوند</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 leading-relaxed">
+                  حذف خودکار در حال حاضر غیرفعال است. با فعال‌سازی تیک بالا، سفارش‌های پرداخت‌نشده بعد از مدت زمان دلخواه شما حذف خواهند شد.
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

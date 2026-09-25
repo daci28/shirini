@@ -1309,6 +1309,141 @@ async function startServer() {
     res.json(order);
   });
 
+  // Delete an order manually from the panel
+  app.delete('/api/orders/:id', (req: Request, res: Response) => {
+    const { id } = req.params;
+    const index = orders.findIndex((o) => o.id === id);
+    if (index === -1) {
+      res.status(404).json({ error: 'سفارش مورد نظر یافت نشد.' });
+      return;
+    }
+    const order = orders[index];
+
+    // Release coupon redemption count if one was used
+    if (order.couponCode) {
+      const foundIndex = discounts.findIndex(
+        d => d.code.trim().toUpperCase() === order.couponCode?.trim().toUpperCase()
+      );
+      if (foundIndex !== -1 && (discounts[foundIndex].usedCount || 0) > 0) {
+        discounts[foundIndex].usedCount -= 1;
+      }
+    }
+
+    // Revert customer order count and spent totals
+    if (order.customerTelegramId) {
+      const cust = customers.find(c => String(c.telegramId) === String(order.customerTelegramId));
+      if (cust) {
+        if (cust.totalOrdersCount && cust.totalOrdersCount > 0) cust.totalOrdersCount -= 1;
+        if (cust.totalSpentTomans && cust.totalSpentTomans >= order.totalAmount) {
+          cust.totalSpentTomans -= order.totalAmount;
+        }
+      }
+      const state = userStates.get(String(order.customerTelegramId));
+      if (state && state.orderId === order.id) {
+        userStates.delete(String(order.customerTelegramId));
+      }
+    }
+
+    orders.splice(index, 1);
+    saveAllData();
+
+    sendToTelegramTopic(
+      'orders',
+      `🗑 <b>سفارش ${escapeTelegramHtml(order.orderNumber)} حذف شد</b>\n\n👤 مشتری: ${escapeTelegramHtml(order.customerName || '---')}\n💵 مبلغ: <b>${Number(order.totalAmount || 0).toLocaleString('fa-IR')} تومان</b>`
+    );
+
+    res.json({ success: true, deletedOrderId: id, deletedOrderNumber: order.orderNumber });
+  });
+
+  // Manually trigger immediate expiration check for unpaid orders
+  app.post('/api/orders/expire-unpaid', async (req: Request, res: Response) => {
+    try {
+      const configured = Number(botSettings.unpaidOrderExpiryMinutes);
+      const minutes = Number.isFinite(configured) && configured >= 1
+        ? Math.min(configured, 60 * 24 * 30)
+        : DEFAULT_UNPAID_EXPIRY_MINUTES;
+      const cutoff = Date.now() - minutes * 60 * 1000;
+
+      const expired = orders.filter((order) => {
+        if (!isAwaitingCustomerPayment(order)) return false;
+        const placed = new Date(order.createdAt).getTime();
+        if (!Number.isFinite(placed)) return false;
+        return placed < cutoff;
+      });
+
+      if (expired.length > 0) {
+        const expiredIds = new Set(expired.map((order) => order.id));
+        orders = orders.filter((order) => !expiredIds.has(order.id));
+
+        for (const order of expired) {
+          if (order.couponCode) {
+            const foundIndex = discounts.findIndex(
+              d => d.code.trim().toUpperCase() === order.couponCode?.trim().toUpperCase()
+            );
+            if (foundIndex !== -1 && (discounts[foundIndex].usedCount || 0) > 0) {
+              discounts[foundIndex].usedCount -= 1;
+            }
+          }
+          if (order.customerTelegramId) {
+            const cust = customers.find(c => String(c.telegramId) === String(order.customerTelegramId));
+            if (cust) {
+              if (cust.totalOrdersCount && cust.totalOrdersCount > 0) cust.totalOrdersCount -= 1;
+              if (cust.totalSpentTomans && cust.totalSpentTomans >= order.totalAmount) {
+                cust.totalSpentTomans -= order.totalAmount;
+              }
+            }
+            const state = userStates.get(String(order.customerTelegramId));
+            if (state && state.orderId === order.id) {
+              userStates.delete(String(order.customerTelegramId));
+            }
+          }
+        }
+
+        saveAllData();
+
+        for (const order of expired) {
+          console.log(`[orders:expiry] manually removed ${order.orderNumber} — unpaid for over ${minutes} minutes`);
+          const chatId = String(order.customerTelegramId || '').trim();
+          if (chatId) {
+            const token = getTelegramBotToken();
+            if (token) {
+              await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: chatId,
+                  parse_mode: 'HTML',
+                  text: `⌛️ <b>سفارش شما لغو شد</b>\n\n`
+                    + `🔖 کد سفارش: <code>${escapeTelegramHtml(order.orderNumber)}</code>\n\n`
+                    + `چون تا ${minutes} دقیقه فیش واریزی ارسال نشد، این سفارش به‌صورت خودکار لغو شد.\n`
+                    + `در صورت تمایل می‌توانید دوباره سفارش ثبت کنید.`,
+                  reply_markup: { inline_keyboard: [[{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories' }]] },
+                }),
+              }).catch((err) => console.error('[orders:expiry] could not notify customer:', err));
+            }
+          }
+          sendToTelegramTopic(
+            'orders',
+            `⌛️ <b>سفارش پرداخت‌نشده حذف شد</b>\n\n`
+              + `🔖 کد سفارش: <code>${escapeTelegramHtml(order.orderNumber)}</code>\n`
+              + `👤 مشتری: ${escapeTelegramHtml(order.customerName || '---')}\n`
+              + `💵 مبلغ: <b>${Number(order.totalAmount || 0).toLocaleString()}</b>\n`
+              + `⏱ بدون فیش به مدت ${minutes} دقیقه`,
+          );
+        }
+      }
+
+      res.json({
+        success: true,
+        removedCount: expired.length,
+        removedOrderNumbers: expired.map(o => o.orderNumber),
+        allOrders: orders,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'خطا در بررسی و حذف سفارش‌های منقضی‌شده' });
+    }
+  });
+
   // Proxy a Telegram file (e.g. payment receipt photo) so the web panel can
   // display images that were sent to the bot (Telegram file_ids are not URLs).
   // This endpoint remains panel-authenticated; the cache is never exposed as a
@@ -4325,6 +4460,31 @@ async function startServer() {
 
     const expiredIds = new Set(expired.map((order) => order.id));
     orders = orders.filter((order) => !expiredIds.has(order.id));
+
+    for (const order of expired) {
+      if (order.couponCode) {
+        const foundIndex = discounts.findIndex(
+          d => d.code.trim().toUpperCase() === order.couponCode?.trim().toUpperCase()
+        );
+        if (foundIndex !== -1 && (discounts[foundIndex].usedCount || 0) > 0) {
+          discounts[foundIndex].usedCount -= 1;
+        }
+      }
+      if (order.customerTelegramId) {
+        const cust = customers.find(c => String(c.telegramId) === String(order.customerTelegramId));
+        if (cust) {
+          if (cust.totalOrdersCount && cust.totalOrdersCount > 0) cust.totalOrdersCount -= 1;
+          if (cust.totalSpentTomans && cust.totalSpentTomans >= order.totalAmount) {
+            cust.totalSpentTomans -= order.totalAmount;
+          }
+        }
+        const state = userStates.get(String(order.customerTelegramId));
+        if (state && state.orderId === order.id) {
+          userStates.delete(String(order.customerTelegramId));
+        }
+      }
+    }
+
     saveAllData();
 
     for (const order of expired) {

@@ -490,7 +490,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
         const itemInCart = cart.find(c => c.productId === prod.id);
         const inCartQty = itemInCart ? itemInCart.quantity : 0;
         const priceText = prod.discountPercent 
-          ? `<s>${formatPrice(prod.price)}</s> <b>${formatPrice(prod.price * (100 - prod.discountPercent) / 100)}</b> (${toPersianDigits(prod.discountPercent)}٪ تخفیف)`
+          ? `<s>${formatPrice(prod.price)}</s> ◀ <b>${formatPrice(prod.price * (100 - prod.discountPercent) / 100)}</b> (${toPersianDigits(prod.discountPercent)}٪ تخفیف)`
           : `<b>${formatPrice(prod.price)}</b>`;
 
         const caption = `🎂 <b>${prod.name}</b>\n\n💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit}\n⏱️ <b>زمان آماده‌سازی:</b> ${toPersianDigits(prod.preparationTimeHours || 2)} ساعت\n📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}${inCartQty > 0 ? `\n🛒 <b>تعداد در سبد شما:</b> ${toPersianDigits(inCartQty)} ${prod.unit}` : ''}\n\n📝 ${prod.description}`;

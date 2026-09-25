@@ -294,7 +294,7 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
     for (const prod of filtered.slice(0, 10)) {
       const discountedPrice = prod.discountPercent ? (prod.price * (100 - prod.discountPercent) / 100) : prod.price;
       const priceText = prod.discountPercent 
-        ? `<s>${prod.price.toLocaleString()}</s> ➤ <b>${discountedPrice.toLocaleString()}</b> تومان`
+        ? `<s>${prod.price.toLocaleString()}</s> ◀ <b>${discountedPrice.toLocaleString()}</b> تومان (${prod.discountPercent}٪ تخفیف)`
         : `<b>${prod.price.toLocaleString()}</b> تومان`;
       
       let cap = `✨━━━━━━━━━━━━━━━━━━━✨\n`;

@@ -641,7 +641,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
               </div>
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 block mb-1">مجموع خریدها:</span>
-                <span className="font-bold text-white">{formatPrice(selectedCustomer.totalSpentTomans)} تومان</span>
+                <span className="font-bold text-white">{formatPrice(selectedCustomer.totalSpentTomans)}</span>
               </div>
               <div className="col-span-2 p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 block mb-1">دفترچه آدرس‌ها:</span>
@@ -701,7 +701,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                       </div>
                       <div className="flex items-center justify-between text-slate-400">
                         <span>{formatDatePersian(order.createdAt)}</span>
-                        <span className="font-bold text-amber-400">{formatPrice(order.totalAmount)} تومان</span>
+                        <span className="font-bold text-amber-400">{formatPrice(order.totalAmount)}</span>
                       </div>
                       <div className="text-[10px] text-slate-500">
                         {order.items.map((item, idx) => (

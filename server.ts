@@ -7431,7 +7431,7 @@ async function startServer() {
         });
         for (const prod of filteredProducts.slice(0, 10)) {
           const priceText = prod.discountPercent 
-            ? `<s>${prod.price.toLocaleString()}</s> <b>${(prod.price * (100 - prod.discountPercent) / 100).toLocaleString()}</b> (${prod.discountPercent}٪ تخفیف)`
+            ? `<s>${prod.price.toLocaleString()}</s> ◀ <b>${(prod.price * (100 - prod.discountPercent) / 100).toLocaleString()}</b> (${prod.discountPercent}٪ تخفیف)`
             : `<b>${prod.price.toLocaleString()}</b>`;
           const caption = `🎂 <b>${prod.name}</b>\n\n💰 <b>قیمت:</b> ${priceText} / هر ${prod.unit}\n📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود' : '🔴 ناموجود'}\n\n📝 ${prod.description || ''}`;
           const buttons: any[][] = [

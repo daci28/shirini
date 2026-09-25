@@ -5553,37 +5553,47 @@ async function startServer() {
     }
 
     if (messageId) {
-      try {
-        const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, message_id: messageId }),
-        });
-        const body: any = await res.json().catch(() => null);
-        if (body?.ok) return;
-        if (typeof body?.description === 'string' && body.description.includes('message is not modified')) {
-          return;
-        }
+      if (photo) {
+        // Photo message in-place update (product card caption & buttons)
+        try {
+          const capRes = await fetch(`https://api.telegram.org/bot${token}/editMessageCaption`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              message_id: messageId,
+              caption: text,
+              parse_mode: 'HTML',
+              reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
+            }),
+          });
+          const capBody: any = await capRes.json().catch(() => null);
+          if (capBody?.ok) return;
+          if (typeof capBody?.description === 'string' && capBody.description.includes('message is not modified')) {
+            return;
+          }
+        } catch { /* fallback */ }
+      } else {
+        // Text-only message in-place update (cart overview, menu, etc. - NEVER keep stray photo)
+        try {
+          const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, message_id: messageId }),
+          });
+          const body: any = await res.json().catch(() => null);
+          if (body?.ok) return;
+          if (typeof body?.description === 'string' && body.description.includes('message is not modified')) {
+            return;
+          }
 
-        // If editing text failed because message has a photo, edit caption instead
-        const capRes = await fetch(`https://api.telegram.org/bot${token}/editMessageCaption`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            message_id: messageId,
-            caption: text,
-            parse_mode: 'HTML',
-            reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
-          }),
-        });
-        const capBody: any = await capRes.json().catch(() => null);
-        if (capBody?.ok) return;
-        if (typeof capBody?.description === 'string' && capBody.description.includes('message is not modified')) {
-          return;
-        }
-      } catch (err) {
-        // Fallback to sendMessage
+          // If editing text failed (e.g. previous message was a photo card), delete photo message so no stray photo remains
+          await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+          }).catch(() => {});
+        } catch { /* fallback */ }
       }
     }
 

@@ -189,7 +189,61 @@ function buildProductCard(prod: any, inCartQty: number) {
 }
 
 async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], photo?: string) {
-  const base: any = { chat_id: ctx.chatId, parse_mode: 'HTML' };
+  // In-place message edit attempt for interactive glass button navigation
+  if (ctx.messageId) {
+    if (photo) {
+      // Photo message in-place update (product card caption & buttons)
+      try {
+        const capResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageCaption`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: ctx.chatId,
+            message_id: ctx.messageId,
+            caption: text,
+            parse_mode: 'HTML',
+            reply_markup: buttons && buttons.length > 0 ? { inline_keyboard: buttons } : undefined,
+          })
+        });
+        const capData = (await capResponse.json().catch(() => ({}))) as any;
+        if (capData?.ok) return;
+        if (typeof capData?.description === 'string' && capData.description.includes('message is not modified')) {
+          return;
+        }
+      } catch { /* fallback */ }
+    } else {
+      // Text-only message in-place update (cart overview, menu, etc. - NEVER keep stray photo)
+      try {
+        const editPayload: any = {
+          chat_id: ctx.chatId,
+          message_id: ctx.messageId,
+          parse_mode: 'HTML',
+          text,
+        };
+        if (buttons && buttons.length > 0) {
+          editPayload.reply_markup = { inline_keyboard: buttons };
+        }
+        const response = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageText`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editPayload)
+        });
+        const resData = (await response.json().catch(() => ({}))) as any;
+        if (resData?.ok) return;
+        if (typeof resData?.description === 'string' && resData.description.includes('message is not modified')) {
+          return;
+        }
+
+        // If editing text failed (e.g. previous message was a photo card), delete photo message so no stray photo remains
+        await fetch(`https://api.telegram.org/bot${ctx.token}/deleteMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: ctx.chatId, message_id: ctx.messageId })
+        }).catch(() => {});
+      } catch { /* fallback */ }
+    }
+  }
+
   if (photo) {
     // Check if photo is a base64 data URL
     if (photo.startsWith('data:image/')) {
@@ -262,51 +316,6 @@ async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], pho
       } catch (err) {
         console.error('Error sending photo:', err);
       }
-    }
-  }
-
-  // In-place message edit attempt for interactive glass button navigation
-  if (ctx.messageId && !photo) {
-    try {
-      const editPayload: any = {
-        chat_id: ctx.chatId,
-        message_id: ctx.messageId,
-        parse_mode: 'HTML',
-        text,
-      };
-      if (buttons && buttons.length > 0) {
-        editPayload.reply_markup = { inline_keyboard: buttons };
-      }
-      const response = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageText`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editPayload)
-      });
-      const resData = (await response.json().catch(() => ({}))) as any;
-      if (resData?.ok) return;
-      if (typeof resData?.description === 'string' && resData.description.includes('message is not modified')) {
-        return;
-      }
-
-      // If editing text failed because message has a photo, edit caption instead
-      const capResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageCaption`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: ctx.chatId,
-          message_id: ctx.messageId,
-          caption: text,
-          parse_mode: 'HTML',
-          reply_markup: buttons && buttons.length > 0 ? { inline_keyboard: buttons } : undefined,
-        })
-      });
-      const capData = (await capResponse.json().catch(() => ({}))) as any;
-      if (capData?.ok) return;
-      if (typeof capData?.description === 'string' && capData.description.includes('message is not modified')) {
-        return;
-      }
-    } catch {
-      // Fallback to sending a new message below
     }
   }
 

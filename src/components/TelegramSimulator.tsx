@@ -249,7 +249,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       updated[targetIndex] = {
         ...updated[targetIndex],
         text,
-        photo: photo !== undefined ? photo : updated[targetIndex].photo,
+        photo: photo || undefined,
         reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
       };
       return updated;

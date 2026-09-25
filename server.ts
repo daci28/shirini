@@ -7809,6 +7809,7 @@ async function startServer() {
             [
               [{ text: '🍰 ثبت سفارش جدید', callback_data: 'menu_categories', style: 'primary' }],
               [{ text: '🎨 ثبت محصول سفارشی', callback_data: 'custom_product_start', style: 'primary' }],
+              [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }],
             ],
           );
           return;

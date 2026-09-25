@@ -1161,11 +1161,12 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       return;
     }
 
-    if (data === 'track_orders_list') {
+    if (data === 'track_orders_list' || data === 'track_order') {
       if (orders.length === 0) {
         editBotMessage('شما در حال حاضر سفارش فعالی ندارید.', [
           [{ text: '🍰 ثبت سفارش جدید', callback_data: 'customer_categories', style: 'primary' }],
-          [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+          [{ text: '🎨 ثبت محصول سفارشی', callback_data: 'customer_categories', style: 'primary' }],
+          [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
         ]);
         return;
       }
@@ -1184,7 +1185,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       });
       editBotMessage(text, [
         [{ text: '🍰 ثبت سفارش جدید', callback_data: 'customer_categories', style: 'primary' }],
-        [{ text: '🔙 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+        [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
       ]);
       return;
     }

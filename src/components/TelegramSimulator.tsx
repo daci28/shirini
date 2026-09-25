@@ -156,6 +156,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     discountObj?: DiscountCode;
   } | null>(null);
   const [isAwaitingDiscountCode, setIsAwaitingDiscountCode] = useState(false);
+  const [awaitingCartRemovalProdId, setAwaitingCartRemovalProdId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [copiedCard, setCopiedCard] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -708,7 +709,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
       if (cart.length === 0) {
         addBotMessage(
           '🛒 <b>سبد خرید شما در حال حاضر خالی است!</b>\nبرای انتخاب شیرینی، کیک یا دسرهای خوشمزه روی دکمه زیر کلیک کنید:',
-          [[{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories' }]]
+          [[{ text: '🍰 مشاهده منوی قنادی', callback_data: 'customer_categories', style: 'primary' }]]
         );
         return;
       }
@@ -734,9 +735,9 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
           // Control buttons per item in cart
           managementButtons.push([
-            { text: `➕ (${prod.name.slice(0, 10)}...)`, callback_data: `inc_cart_${prod.id}` },
-            { text: `➖ کاهش`, callback_data: `dec_cart_${prod.id}` },
-            { text: `❌ حذف کامل`, callback_data: `remove_from_cart_${prod.id}` }
+            { text: `➕ (${prod.name.slice(0, 10)}...)`, callback_data: `inc_cart_${prod.id}`, style: 'primary' },
+            { text: `➖ کاهش`, callback_data: `dec_cart_${prod.id}`, style: 'primary' },
+            { text: `❌ حذف`, callback_data: `cart_rem_item_${prod.id}`, style: 'danger' }
           ]);
         }
       });
@@ -753,28 +754,177 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
       // Discount action button
       const discountButtonRow: TelegramInlineButton[] = validDiscount ? [
-        { text: `❌ حذف کد تخفیف (${validDiscount.code})`, callback_data: 'remove_discount_code' }
+        { text: `❌ حذف کد تخفیف (${validDiscount.code})`, callback_data: 'remove_discount_code', style: 'danger' }
       ] : [
-        { text: '🏷️ اعمال کد تخفیف', callback_data: 'apply_discount_prompt' }
+        { text: '🏷️ اعمال کد تخفیف', callback_data: 'apply_discount_prompt', style: 'primary' }
       ];
 
       const buttons: TelegramInlineButton[][] = [
         [
-          { text: '💳 تکمیل خرید و ثبت آدرس', callback_data: 'checkout_start' },
-          { text: '🧾 پیش‌نمایش فاکتور', callback_data: 'view_invoice_preview' }
+          { text: '💳 تکمیل خرید و ثبت آدرس', callback_data: 'checkout_start', style: 'success' },
+          { text: '🧾 پیش‌نمایش فاکتور', callback_data: 'view_invoice_preview', style: 'primary' }
         ],
         discountButtonRow,
         ...managementButtons,
         [
-          { text: '➕ افزودن شیرینی‌های دیگر', callback_data: 'customer_categories' },
-          { text: '🗑️ خالی کردن کل سبد', callback_data: 'clear_cart' }
+          { text: '🗑️ حذف محصول مورد نظر', callback_data: 'cart_remove_item_menu', style: 'danger' }
         ],
         [
-          { text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }
+          { text: '➕ افزودن شیرینی‌های دیگر', callback_data: 'customer_categories', style: 'primary' },
+          { text: '🗑️ خالی کردن کل سبد', callback_data: 'clear_cart', style: 'danger' }
+        ],
+        [
+          { text: '🔙 بازگشت به منو', callback_data: 'back_to_main', style: 'danger' }
         ]
       ];
 
       addBotMessage(cartSummary, buttons);
+      return;
+    }
+
+    if (data === 'cart_remove_item_menu') {
+      addUserMessage('🗑️ حذف محصول مورد نظر');
+      if (cart.length === 0) {
+        addBotMessage(
+          '🛒 <b>سبد خرید شما در حال حاضر خالی است!</b>',
+          [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]]
+        );
+        return;
+      }
+      const buttons: TelegramInlineButton[][] = [];
+      for (const item of cart) {
+        const prod = products.find(p => p.id === item.productId);
+        if (prod) {
+          buttons.push([{
+            text: `❌ ${prod.name} (${toPersianDigits(item.quantity)} ${prod.unit})`,
+            callback_data: `cart_rem_item_${prod.id}`,
+            style: 'danger'
+          }]);
+        }
+      }
+      buttons.push([
+        { text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }
+      ]);
+      addBotMessage(
+        '🗑️ <b>حذف محصول از سبد خرید</b>\n\nلطفاً محصولی که قصد حذف یا کاهش تعداد آن را دارید انتخاب فرمایید:',
+        buttons
+      );
+      return;
+    }
+
+    if (data.startsWith('cart_rem_item_')) {
+      const prodId = data.replace('cart_rem_item_', '');
+      const item = cart.find(i => i.productId === prodId);
+      const prod = products.find(p => p.id === prodId);
+      if (!item || !prod) {
+        handleCallbackQuery('view_cart');
+        return;
+      }
+      addUserMessage(`انتخاب حذف ${prod.name}`);
+      if (item.quantity <= 1) {
+        setCart(prev => prev.filter(i => i.productId !== prodId));
+        if (cart.length <= 1) {
+          addBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+          ]);
+        } else {
+          addBotMessage(`✅ «${prod.name}» با موفقیت از سبد خرید حذف شد.`, [
+            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+          ]);
+        }
+        return;
+      }
+
+      // Quantity > 1 -> offer quick reduce options
+      const qtyButtons: TelegramInlineButton[][] = [];
+      qtyButtons.push([{ text: `➖ حذف ۱ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_1`, style: 'danger' }]);
+      if (item.quantity >= 3) {
+        qtyButtons.push([{ text: `➖ حذف ۲ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_2`, style: 'danger' }]);
+      }
+      if (item.quantity >= 4) {
+        qtyButtons.push([{ text: `➖ حذف ۳ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_3`, style: 'danger' }]);
+      }
+      qtyButtons.push([{ text: `🗑️ حذف کامل (${toPersianDigits(item.quantity)} ${prod.unit})`, callback_data: `cart_rem_qty_${prod.id}_all`, style: 'danger' }]);
+      qtyButtons.push([{ text: '🔢 وارد کردن تعداد دلخواه', callback_data: `cart_rem_custom_${prod.id}`, style: 'primary' }]);
+      qtyButtons.push([{ text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]);
+
+      addBotMessage(
+        `🗑️ <b>حذف یا کاهش تعداد «${prod.name}»</b>\n\nتعداد فعلی در سبد خرید: <b>${toPersianDigits(item.quantity)} ${prod.unit}</b>\n\nچه تعداد می‌خواهید از این محصول حذف شود؟`,
+        qtyButtons
+      );
+      return;
+    }
+
+    if (data.startsWith('cart_rem_qty_')) {
+      const payload = data.replace('cart_rem_qty_', '');
+      const lastUnderscore = payload.lastIndexOf('_');
+      const prodId = payload.slice(0, lastUnderscore);
+      const qtyStr = payload.slice(lastUnderscore + 1);
+
+      const item = cart.find(i => i.productId === prodId);
+      const prod = products.find(p => p.id === prodId);
+      if (!item || !prod) {
+        handleCallbackQuery('view_cart');
+        return;
+      }
+
+      if (qtyStr === 'all') {
+        addUserMessage(`🗑️ حذف کامل ${prod.name}`);
+        setCart(prev => prev.filter(i => i.productId !== prodId));
+        if (cart.length <= 1) {
+          addBotMessage(`🗑️ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+          ]);
+        } else {
+          addBotMessage(`✅ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.`, [
+            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+          ]);
+        }
+        return;
+      }
+
+      const deduct = parseFloat(qtyStr);
+      if (isNaN(deduct) || deduct <= 0) {
+        handleCallbackQuery('view_cart');
+        return;
+      }
+
+      addUserMessage(`➖ کسر ${toPersianDigits(deduct)} ${prod.unit} از ${prod.name}`);
+      if (item.quantity - deduct <= 0) {
+        setCart(prev => prev.filter(i => i.productId !== prodId));
+        if (cart.length <= 1) {
+          addBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+          ]);
+        } else {
+          addBotMessage(`✅ «${prod.name}» از سبد خرید حذف شد.`, [
+            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+          ]);
+        }
+      } else {
+        const remaining = item.quantity - deduct;
+        setCart(prev => prev.map(i => i.productId === prodId ? { ...i, quantity: remaining } : i));
+        addBotMessage(`✅ <b>${toPersianDigits(deduct)} ${prod.unit}</b> از «${prod.name}» کسر شد. (موجودی فعلی در سبد: ${toPersianDigits(remaining)} ${prod.unit})`, [
+          [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+        ]);
+      }
+      return;
+    }
+
+    if (data.startsWith('cart_rem_custom_')) {
+      const prodId = data.replace('cart_rem_custom_', '');
+      const item = cart.find(i => i.productId === prodId);
+      const prod = products.find(p => p.id === prodId);
+      if (!item || !prod) {
+        handleCallbackQuery('view_cart');
+        return;
+      }
+      addUserMessage(`🔢 کسر تعداد دلخواه از ${prod.name}`);
+      setAwaitingCartRemovalProdId(prodId);
+      addBotMessage(
+        `🔢 <b>کسر تعداد دلخواه از «${prod.name}»:</b>\n\nتعداد فعلی در سبد: <b>${toPersianDigits(item.quantity)} ${prod.unit}</b>\n\nلطفاً تعداد (${prod.unit}) که می‌خواهید حذف شود را به عدد وارد نمایید:\n<i>(مثال: 1 یا 2.5)</i>`,
+        [[{ text: '❌ انصراف و بازگشت به سبد', callback_data: 'view_cart', style: 'danger' }]]
+      );
       return;
     }
 
@@ -2322,6 +2472,46 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
           [{ text: '👨‍🍳 پنل اصلی ادمین', callback_data: 'back_to_admin' }]
         ]
       );
+      return;
+    }
+
+    if (awaitingCartRemovalProdId) {
+      const prodId = awaitingCartRemovalProdId;
+      setAwaitingCartRemovalProdId(null);
+      const prod = products.find(p => p.id === prodId);
+      const item = cart.find(i => i.productId === prodId);
+      if (!prod || !item) {
+        handleCallbackQuery('view_cart');
+        return;
+      }
+      const raw = userText.trim().replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString()).replace(/,/g, '.');
+      const deduct = parseFloat(raw);
+      if (isNaN(deduct) || deduct <= 0) {
+        addBotMessage('❌ لطفاً یک عدد معتبر و بزرگتر از صفر وارد فرمایید.', [
+          [{ text: '🔢 تلاش مجدد', callback_data: `cart_rem_custom_${prodId}`, style: 'primary' }],
+          [{ text: '🛒 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'danger' }]
+        ]);
+        return;
+      }
+
+      if (deduct >= item.quantity) {
+        setCart(prev => prev.filter(i => i.productId !== prodId));
+        if (cart.length <= 1) {
+          addBotMessage(`🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`, [
+            [{ text: '🍰 مشاهده منوی محصولات', callback_data: 'customer_categories', style: 'primary' }]
+          ]);
+        } else {
+          addBotMessage(`✅ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.`, [
+            [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+          ]);
+        }
+      } else {
+        const remaining = item.quantity - deduct;
+        setCart(prev => prev.map(i => i.productId === prodId ? { ...i, quantity: remaining } : i));
+        addBotMessage(`✅ <b>${toPersianDigits(deduct)} ${prod.unit}</b> از «${prod.name}» کسر شد. (موجودی فعلی در سبد: ${toPersianDigits(remaining)} ${prod.unit})`, [
+          [{ text: '🛒 مشاهده سبد خرید', callback_data: 'view_cart', style: 'primary' }]
+        ]);
+      }
       return;
     }
 

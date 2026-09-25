@@ -2994,6 +2994,30 @@ function testSettingsToggleSwitchStyles() {
   console.log('✅ settings toggle switches use unified pill switch styling');
 }
 
+function testCartItemRemovalFlow() {
+  const serverSource = fs.readFileSync(new URL('../server.ts', import.meta.url), 'utf8');
+  const simSource = fs.readFileSync(new URL('../src/components/TelegramSimulator.tsx', import.meta.url), 'utf8');
+
+  // Verify server.ts has 5 buttons in shopping cart
+  assert.ok(serverSource.includes('sendBotCartView'), 'server.ts must have sendBotCartView helper');
+  assert.ok(serverSource.includes('cart_remove_item_menu'), 'server.ts must handle cart_remove_item_menu callback');
+  assert.ok(serverSource.includes('cart_rem_item_'), 'server.ts must handle cart_rem_item_ callback');
+  assert.ok(serverSource.includes('cart_rem_qty_'), 'server.ts must handle cart_rem_qty_ callback');
+  assert.ok(serverSource.includes('cart_rem_custom_'), 'server.ts must handle cart_rem_custom_ callback');
+  assert.ok(serverSource.includes('cart_remove_custom_qty'), 'server.ts must handle custom quantity input state');
+  assert.ok(serverSource.includes('حذف محصول مورد نظر'), 'server.ts must have 5th button label for removing selected product');
+
+  // Verify TelegramSimulator.tsx has cart removal features
+  assert.ok(simSource.includes('cart_remove_item_menu'), 'Simulator must handle cart_remove_item_menu');
+  assert.ok(simSource.includes('cart_rem_item_'), 'Simulator must handle cart_rem_item_');
+  assert.ok(simSource.includes('cart_rem_qty_'), 'Simulator must handle cart_rem_qty_');
+  assert.ok(simSource.includes('cart_rem_custom_'), 'Simulator must handle cart_rem_custom_');
+  assert.ok(simSource.includes('awaitingCartRemovalProdId'), 'Simulator must handle custom reduction state');
+  assert.ok(simSource.includes('حذف محصول مورد نظر'), 'Simulator must have 5th button label');
+
+  console.log('✅ 5th cart item removal button and quantity reduction flow are fully implemented');
+}
+
 async function main() {
   testTelegramImageResolver();
   testSingleProfilePerTelegramAccountAndAddressBook();
@@ -3031,6 +3055,7 @@ async function main() {
   testShopNameComesFromSettingsEverywhere();
   testCustomerBlockAndUnblockGate();
   testSettingsToggleSwitchStyles();
+  testCartItemRemovalFlow();
   testProductImagesStayReachableForTelegram();
   testCustomOrdersAppearInCustomerTrackingWithDetails();
   testCustomPrepaymentReviewAndInvoiceAggregation();

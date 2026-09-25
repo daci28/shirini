@@ -5533,6 +5533,54 @@ async function startServer() {
     return true;
   }
 
+  // Render and send the complete 5-button shopping cart overview
+  async function sendBotCartView(token: string, chatId: string) {
+    const cart = userCarts.get(chatId) || [];
+    if (cart.length === 0) {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: '🛒 <b>سبد خرید شما خالی است!</b>\n\nبرای سفارش از منوی محصولات استفاده کنید.',
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
+        })
+      });
+      return;
+    }
+    let cartText = '🛒 <b>سبد خرید شما:</b>\n\n';
+    let subtotal = 0;
+    for (const item of cart) {
+      const prod = products.find(p => p.id === item.productId);
+      if (prod) {
+        const effectivePrice = prod.discountPercent ? prod.price * (100 - prod.discountPercent) / 100 : prod.price;
+        const itemTotal = effectivePrice * item.quantity;
+        subtotal += itemTotal;
+        cartText += `🔹 <b>${prod.name}</b>\n   ${item.quantity.toLocaleString('fa-IR')} ${prod.unit} × ${effectivePrice.toLocaleString('fa-IR')} = <b>${itemTotal.toLocaleString('fa-IR')} تومان</b>\n\n`;
+      }
+    }
+    cartText += `────────────────\n`;
+    cartText += `💵 مجموع اقلام: <b>${subtotal.toLocaleString('fa-IR')} تومان</b>\n`;
+    cartText += `🛵 هزینه ارسال: پس از انتخاب نحوه دریافت (حضوری / پیک) در مرحله پرداخت محاسبه می‌شود`;
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: cartText,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [
+          [{ text: '💳 ثبت سفارش و پرداخت', callback_data: 'checkout_start', style: 'success' }],
+          [{ text: '🗑️ حذف محصول مورد نظر', callback_data: 'cart_remove_item_menu', style: 'danger' }],
+          [{ text: '🗑️ خالی کردن سبد', callback_data: 'clear_cart', style: 'danger' }],
+          [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }],
+          [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
+        ]}
+      })
+    });
+  }
+
   // Used both for /start and for every "back to main menu" button, so the
   // customer always sees the same main menu (no stray cake photo / store name).
   async function sendBotMainMenu(token: string, chatId: string, from: any) {
@@ -5865,6 +5913,66 @@ async function startServer() {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ chat_id: chatId, text: `✅ <b>${qty} ${prod.unit}</b> از «${prod.name}» به سبد خرید افزوده شد.\n\n🛒 <b>تعداد کل اقلام سبد:</b> ${totalQty}`, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🛒 مشاهده سبد خرید و پرداخت', callback_data: 'view_cart', style: 'success' }], [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }]] } })
             });
+          }
+          return;
+        }
+        // Handle "remove custom quantity from cart" flow (cart_remove_custom_qty)
+        const remQtyState = userStates.get(chatId);
+        if (remQtyState && remQtyState.mode === 'cart_remove_custom_qty') {
+          const qty = parseFloat(text);
+          if (isNaN(qty) || qty <= 0) {
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: chatId, text: '❌ لطفاً یک عدد معتبر وارد کنید (مثلاً: 1 یا 2):', parse_mode: 'HTML' })
+            });
+            return;
+          }
+          const prod = products.find(p => p.id === remQtyState.productId);
+          const cart = userCarts.get(chatId) || [];
+          const item = cart.find(i => i.productId === remQtyState.productId);
+          userStates.delete(chatId);
+          if (prod && item) {
+            if (item.quantity - qty <= 0) {
+              const newCart = cart.filter(i => i.productId !== prod.id);
+              if (newCart.length === 0) {
+                userCarts.delete(chatId);
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: `🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
+                    parse_mode: 'HTML',
+                    reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
+                  })
+                });
+                return;
+              } else {
+                userCarts.set(chatId, newCart);
+                await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: `✅ «${prod.name}» با موفقیت از سبد خرید حذف شد.`,
+                    parse_mode: 'HTML'
+                  })
+                });
+              }
+            } else {
+              item.quantity -= qty;
+              userCarts.set(chatId, cart);
+              await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: chatId,
+                  text: `✅ <b>${qty.toLocaleString('fa-IR')} ${prod.unit}</b> از «${prod.name}» کسر شد.\n(تعداد باقی‌مانده: <b>${item.quantity.toLocaleString('fa-IR')} ${prod.unit}</b>)`,
+                  parse_mode: 'HTML'
+                })
+              });
+            }
+            await sendBotCartView(token, chatId);
           }
           return;
         }
@@ -7510,47 +7618,212 @@ async function startServer() {
           })
         });
       } else if (data === 'view_cart') {
+        await sendBotCartView(token, chatId);
+      } else if (data === 'cart_remove_item_menu') {
         const cart = userCarts.get(chatId) || [];
         if (cart.length === 0) {
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: '🛒 <b>سبد خرید شما خالی است!</b>\n\nبرای سفارش از منوی محصولات استفاده کنید.',
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
-            })
-          });
+          await sendBotCartView(token, chatId);
           return;
         }
-        let cartText = '🛒 <b>سبد خرید شما:</b>\n\n';
-        let subtotal = 0;
+        const buttons: any[][] = [];
         for (const item of cart) {
           const prod = products.find(p => p.id === item.productId);
           if (prod) {
-            const effectivePrice = prod.discountPercent ? prod.price * (100 - prod.discountPercent) / 100 : prod.price;
-            const itemTotal = effectivePrice * item.quantity;
-            subtotal += itemTotal;
-            cartText += `🔹 <b>${prod.name}</b>\n   ${item.quantity} ${prod.unit} × ${effectivePrice.toLocaleString()} = <b>${itemTotal.toLocaleString()}</b>\n\n`;
+            buttons.push([{
+              text: `❌ ${prod.name} (${item.quantity.toLocaleString('fa-IR')} ${prod.unit})`,
+              callback_data: `cart_rem_item_${prod.id}`,
+              style: 'danger'
+            }]);
           }
         }
-        cartText += `────────────────\n`;
-        cartText += `💵 مجموع اقلام: <b>${subtotal.toLocaleString()} تومان</b>\n`;
-        cartText += `🛵 هزینه ارسال: پس از انتخاب نحوه دریافت (حضوری / پیک) در مرحله پرداخت محاسبه می‌شود`;
+        buttons.push([
+          { text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }
+        ]);
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: cartText,
+            text: '🗑️ <b>حذف محصول از سبد خرید</b>\n\nلطفاً محصولی که قصد حذف یا کاهش تعداد آن را دارید انتخاب فرمایید:',
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [
-              [{ text: '💳 ثبت سفارش و پرداخت', callback_data: 'checkout_start', style: 'success' }],
-              [{ text: '🗑️ خالی کردن سبد', callback_data: 'clear_cart', style: 'danger' }],
-              [{ text: '🍰 ادامه خرید', callback_data: 'menu_categories', style: 'primary' }],
-              [{ text: '🏠 بازگشت به منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]
-            ]}
+            reply_markup: { inline_keyboard: buttons }
+          })
+        });
+      } else if (data.startsWith('cart_rem_item_')) {
+        const prodId = data.replace('cart_rem_item_', '');
+        const cart = userCarts.get(chatId) || [];
+        const item = cart.find(i => i.productId === prodId);
+        const prod = products.find(p => p.id === prodId);
+        if (!item || !prod) {
+          await sendBotCartView(token, chatId);
+          return;
+        }
+        if (item.quantity <= 1) {
+          const newCart = cart.filter(i => i.productId !== prodId);
+          if (newCart.length === 0) {
+            userCarts.delete(chatId);
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منو', callback_data: 'menu_categories', style: 'primary' }]] }
+              })
+            });
+          } else {
+            userCarts.set(chatId, newCart);
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `✅ «${prod.name}» با موفقیت از سبد خرید حذف شد.`,
+                parse_mode: 'HTML'
+              })
+            });
+            await sendBotCartView(token, chatId);
+          }
+          return;
+        }
+
+        // Quantity > 1 -> allow selecting how many to remove
+        const qtyButtons: any[][] = [];
+        qtyButtons.push([{ text: `➖ حذف ۱ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_1`, style: 'danger' }]);
+        if (item.quantity >= 3) {
+          qtyButtons.push([{ text: `➖ حذف ۲ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_2`, style: 'danger' }]);
+        }
+        if (item.quantity >= 4) {
+          qtyButtons.push([{ text: `➖ حذف ۳ ${prod.unit}`, callback_data: `cart_rem_qty_${prod.id}_3`, style: 'danger' }]);
+        }
+        qtyButtons.push([{ text: `🗑️ حذف کامل (${item.quantity.toLocaleString('fa-IR')} ${prod.unit})`, callback_data: `cart_rem_qty_${prod.id}_all`, style: 'danger' }]);
+        qtyButtons.push([{ text: '🔢 وارد کردن تعداد دلخواه', callback_data: `cart_rem_custom_${prod.id}`, style: 'primary' }]);
+        qtyButtons.push([{ text: '🔙 بازگشت به سبد خرید', callback_data: 'view_cart', style: 'primary' }]);
+
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `🗑️ <b>حذف یا کاهش تعداد «${prod.name}»</b>\n\nتعداد فعلی در سبد خرید: <b>${item.quantity.toLocaleString('fa-IR')} ${prod.unit}</b>\n\nچه تعداد می‌خواهید از این محصول حذف شود؟`,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: qtyButtons }
+          })
+        });
+      } else if (data.startsWith('cart_rem_qty_')) {
+        const payload = data.replace('cart_rem_qty_', '');
+        const lastUnderscore = payload.lastIndexOf('_');
+        const prodId = payload.slice(0, lastUnderscore);
+        const qtyStr = payload.slice(lastUnderscore + 1);
+
+        const cart = userCarts.get(chatId) || [];
+        const item = cart.find(i => i.productId === prodId);
+        const prod = products.find(p => p.id === prodId);
+        if (!item || !prod) {
+          await sendBotCartView(token, chatId);
+          return;
+        }
+
+        if (qtyStr === 'all') {
+          const newCart = cart.filter(i => i.productId !== prodId);
+          if (newCart.length === 0) {
+            userCarts.delete(chatId);
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `🗑️ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]] }
+              })
+            });
+            return;
+          } else {
+            userCarts.set(chatId, newCart);
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `✅ «${prod.name}» به‌طور کامل از سبد خرید حذف شد.`,
+                parse_mode: 'HTML'
+              })
+            });
+            await sendBotCartView(token, chatId);
+            return;
+          }
+        }
+
+        const deduct = parseFloat(qtyStr);
+        if (isNaN(deduct) || deduct <= 0) {
+          await sendBotCartView(token, chatId);
+          return;
+        }
+
+        if (item.quantity - deduct <= 0) {
+          const newCart = cart.filter(i => i.productId !== prodId);
+          if (newCart.length === 0) {
+            userCarts.delete(chatId);
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `🗑️ «${prod.name}» از سبد خرید حذف شد.\n\nسبد خرید شما اکنون خالی است.`,
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: [[{ text: '🍰 مشاهده منوی محصولات', callback_data: 'menu_categories', style: 'primary' }]] }
+              })
+            });
+            return;
+          } else {
+            userCarts.set(chatId, newCart);
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: chatId,
+                text: `✅ «${prod.name}» از سبد خرید حذف شد.`,
+                parse_mode: 'HTML'
+              })
+            });
+            await sendBotCartView(token, chatId);
+            return;
+          }
+        } else {
+          item.quantity -= deduct;
+          userCarts.set(chatId, cart);
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `✅ <b>${deduct.toLocaleString('fa-IR')} ${prod.unit}</b> از «${prod.name}» کسر شد.`,
+              parse_mode: 'HTML'
+            })
+          });
+          await sendBotCartView(token, chatId);
+          return;
+        }
+      } else if (data.startsWith('cart_rem_custom_')) {
+        const prodId = data.replace('cart_rem_custom_', '');
+        const cart = userCarts.get(chatId) || [];
+        const item = cart.find(i => i.productId === prodId);
+        const prod = products.find(p => p.id === prodId);
+        if (!item || !prod) {
+          await sendBotCartView(token, chatId);
+          return;
+        }
+        userStates.set(chatId, { mode: 'cart_remove_custom_qty', productId: prodId });
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `🔢 <b>کسر تعداد دلخواه از «${prod.name}»:</b>\n\nتعداد فعلی در سبد: <b>${item.quantity.toLocaleString('fa-IR')} ${prod.unit}</b>\n\nلطفاً تعداد (${prod.unit}) که می‌خواهید حذف شود را به عدد وارد نمایید:\n<i>(مثال: 1 یا 2.5)</i>`,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '❌ انصراف و بازگشت به سبد', callback_data: 'view_cart', style: 'danger' }]] }
           })
         });
       } else if (data === 'clear_cart') {

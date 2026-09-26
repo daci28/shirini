@@ -53,6 +53,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [imageBaseSize, setImageBaseSize] = useState<{ width: number; height: number } | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const zoomViewportRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef<Point>({ x: 0, y: 0 });
   const transformFrame = useRef<number | null>(null);
@@ -261,22 +262,29 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     }
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    // Calculate the pointer position relative to the viewport center, which is
-    // also the transform origin of the image. Zooming then keeps this exact
-    // point anchored instead of always pulling the image toward its center.
-    const bounds = event.currentTarget.getBoundingClientRect();
+  const zoomAtPointer = (clientX: number, clientY: number, deltaY: number, bounds: DOMRect) => {
     const focalPoint = {
-      x: event.clientX - (bounds.left + bounds.width / 2),
-      y: event.clientY - (bounds.top + bounds.height / 2),
+      x: clientX - (bounds.left + bounds.width / 2),
+      y: clientY - (bounds.top + bounds.height / 2),
     };
-
-    // A higher factor makes trackpad/wheel inspection feel responsive without
-    // making individual wheel ticks jump past small receipt details.
-    const factor = Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY);
+    const factor = Math.exp(-deltaY * WHEEL_ZOOM_SENSITIVITY);
     setZoomLevel(zoomRef.current * factor, focalPoint);
   };
+
+  // React's wheel listener can be treated as passive by some browser/page
+  // combinations. Install a native non-passive listener as well, otherwise
+  // the panel page scrolls underneath the modal while the image is zoomed.
+  useEffect(() => {
+    const viewport = zoomViewportRef.current;
+    if (!viewport) return undefined;
+    const preventPageScroll = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      zoomAtPointer(event.clientX, event.clientY, event.deltaY, viewport.getBoundingClientRect());
+    };
+    viewport.addEventListener('wheel', preventPageScroll, { passive: false });
+    return () => viewport.removeEventListener('wheel', preventPageScroll);
+  }, [imageSrc]);
 
   return (
     <div
@@ -357,7 +365,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
           onPointerUp={finishPointer}
           onPointerCancel={finishPointer}
           onLostPointerCapture={finishPointer}
-          onWheel={handleWheel}
+          ref={zoomViewportRef}
           // Disable browser page gestures here so a two-finger pinch controls
           // the image, not the entire page.
           style={{ touchAction: 'none' }}
@@ -387,6 +395,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             </>
           )}
           <img
+            key={imageSrc}
             ref={imageRef}
             src={imageSrc}
             alt={alt}

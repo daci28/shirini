@@ -52,3 +52,31 @@ textarea:disabled {
 ::-webkit-scrollbar-track {
   background-color: #0f172a;
 }
+
+/* A rounded scrollbar for modal cards, including RTL cards where the bar is
+   rendered on the left edge. The track stays visually inside the rounded card
+   instead of looking like a detached square strip. */
+.scrollbar-rounded {
+  scrollbar-color: #334155 #0f172a;
+  scrollbar-width: thin;
+}
+
+.scrollbar-rounded::-webkit-scrollbar {
+  width: 7px;
+}
+
+.scrollbar-rounded::-webkit-scrollbar-track {
+  margin-block: 10px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.scrollbar-rounded::-webkit-scrollbar-thumb {
+  border: 1px solid #0f172a;
+  border-radius: 999px;
+  background: #475569;
+}
+
+.scrollbar-rounded::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}

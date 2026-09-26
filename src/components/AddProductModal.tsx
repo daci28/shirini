@@ -156,7 +156,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[90dvh] overflow-y-auto text-slate-100 shadow-2xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[90dvh] overflow-y-auto scrollbar-rounded text-slate-100 shadow-2xl">
         
         {/* Success Message */}
         {createdProduct && (

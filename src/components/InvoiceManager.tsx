@@ -743,7 +743,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({
 
       {isCreating && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6">
-          <form onSubmit={submitManualInvoice} className="mx-auto my-4 w-full max-w-6xl rounded-2xl border border-violet-800/50 bg-slate-900 shadow-2xl">
+          <form onSubmit={submitManualInvoice} className="mx-auto my-4 w-full max-w-6xl overflow-hidden rounded-2xl border border-violet-800/50 bg-slate-900 shadow-2xl">
             <header className="flex items-start justify-between gap-4 border-b border-slate-800 bg-slate-900 p-4 sm:p-5">
               <div className="flex gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white"><FilePlus2 className="h-5 w-5" /></div>

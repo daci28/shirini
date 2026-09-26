@@ -52,6 +52,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [imageBaseSize, setImageBaseSize] = useState<{ width: number; height: number } | null>(null);
+  const [imageLoadError, setImageLoadError] = useState(false);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const zoomViewportRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
@@ -124,6 +125,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   useEffect(() => {
     activePointers.current.clear();
     setImageBaseSize(null);
+    setImageLoadError(false);
     resetView();
   }, [imageSrc]);
 
@@ -449,6 +451,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             src={imageSrc}
             alt={alt}
             onLoad={handleImageLoad}
+            onError={() => setImageLoadError(true)}
             draggable={false}
             className={`${imageBaseSize ? '' : 'max-h-full max-w-full'} select-none object-contain shadow-2xl`}
             style={{
@@ -461,6 +464,11 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             }}
             referrerPolicy="no-referrer"
           />
+          {imageLoadError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/95 p-6 text-center text-sm text-rose-200">
+              تصویر قابل بارگذاری نیست. لطفاً دوباره تلاش کنید یا از گزینهٔ «باز کردن اندازه اصلی» استفاده کنید.
+            </div>
+          )}
         </div>
 
         {hasGallery && (

@@ -284,6 +284,8 @@ export interface CustomerUser {
   rulesAccepted?: boolean;
   /** Timestamp when terms were accepted. */
   rulesAcceptedAt?: string;
+  /** True when the new customer join report has already been sent to topic. */
+  startReported?: boolean;
   /** True when customer is blocked by admin from using the bot. */
   isBlocked?: boolean;
   /** When the user was blocked. */

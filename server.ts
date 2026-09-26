@@ -5927,21 +5927,13 @@ async function startServer() {
 
         // One Telegram account = one customer record. Never create duplicates;
         // just keep the profile (name/username) current.
-        const isNew = !customers.some(c => String(c.telegramId) === String(chatId));
         const startProfile = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ').trim();
-        upsertBotCustomer(customers, {
+        const cust = upsertBotCustomer(customers, {
           telegramId: chatId,
           name: startProfile,
           username: msg.from?.username || '',
         });
         saveAllData();
-
-        if (isNew) {
-          sendToTelegramTopic(
-            'customers',
-            `👤 <b>عضویت مشتری جدید در ربات:</b>\n\n👤 نام اکانت: <b>${escapeTelegramHtml(startProfile || 'کاربر بدون نام')}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n${msg.from?.username ? `💬 یوزرنیم: @${msg.from.username}\n` : ''}📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
-          );
-        }
 
         // Forced-join gate: the main menu is withheld until every required
         // channel has been joined.
@@ -5949,6 +5941,16 @@ async function startServer() {
 
         // Store Rules gate: customer must review and accept terms before main menu.
         if (await blockedByStoreRules(token, chatId, String(msg.from?.id ?? chatId))) return;
+
+        // If rules are disabled or already accepted and user hasn't been reported yet:
+        if (!cust.startReported) {
+          cust.startReported = true;
+          saveAllData();
+          sendToTelegramTopic(
+            'customers',
+            `👤 <b>عضویت مشتری جدید در ربات:</b>\n\n👤 نام اکانت: <b>${escapeTelegramHtml(startProfile || 'کاربر بدون نام')}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n${msg.from?.username ? `💬 یوزرنیم: @${msg.from.username}\n` : ''}📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
+          );
+        }
 
         await sendBotMainMenu(token, chatId, msg.from);
       } else if (text === '/admin') {
@@ -6703,6 +6705,17 @@ async function startServer() {
         // After passing join gate, check store rules!
         if (await blockedByStoreRules(token, chatId, callbackActorId)) return;
 
+        let cust = customers.find(c => String(c.telegramId) === String(chatId));
+        if (cust && !cust.startReported) {
+          cust.startReported = true;
+          saveAllData();
+          const profileName = [cb.from?.first_name, cb.from?.last_name].filter(Boolean).join(' ').trim() || cust.name || 'کاربر بدون نام';
+          sendToTelegramTopic(
+            'customers',
+            `👤 <b>عضویت مشتری جدید در ربات:</b>\n\n👤 نام اکانت: <b>${escapeTelegramHtml(profileName)}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n${cb.from?.username ? `💬 یوزرنیم: @${cb.from.username}\n` : ''}📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
+          );
+        }
+
         await sendBotMainMenu(token, chatId, cb.from);
         return;
       }
@@ -6719,6 +6732,15 @@ async function startServer() {
         }
         cust.rulesAccepted = true;
         cust.rulesAcceptedAt = new Date().toISOString();
+
+        if (!cust.startReported) {
+          cust.startReported = true;
+          const profileName = [cb.from?.first_name, cb.from?.last_name].filter(Boolean).join(' ').trim() || cust.name || 'کاربر بدون نام';
+          sendToTelegramTopic(
+            'customers',
+            `👤 <b>عضویت مشتری جدید در ربات (تأیید قوانین):</b>\n\n👤 نام اکانت: <b>${escapeTelegramHtml(profileName)}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n${cb.from?.username ? `💬 یوزرنیم: @${cb.from.username}\n` : ''}📜 وضعیت: <b>قوانین قنادی را تأیید کرد ✅</b>\n📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
+          );
+        }
         saveAllData();
 
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -6730,11 +6752,6 @@ async function startServer() {
             parse_mode: 'HTML',
           }),
         });
-
-        sendToTelegramTopic(
-          'customers',
-          `📜 <b>تأیید قوانین فروشگاه:</b>\n\n👤 مشتری: <b>${escapeTelegramHtml(cust.name || 'کاربر')}</b>\n🆔 شناسه تلگرام: <code>${chatId}</code>\n📅 ساعت: ${new Date().toLocaleTimeString('fa-IR')}`
-        );
 
         await sendBotMainMenu(token, chatId, cb.from);
         return;

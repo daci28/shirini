@@ -742,9 +742,9 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({
       )}
 
       {isCreating && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6">
-          <form onSubmit={submitManualInvoice} className="mx-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-violet-800/50 bg-slate-900 shadow-2xl sm:max-h-[calc(100vh-3rem)]">
-            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 bg-slate-900 p-4 sm:p-5">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6">
+          <form onSubmit={submitManualInvoice} className="mx-auto my-4 w-full max-w-6xl rounded-2xl border border-violet-800/50 bg-slate-900 shadow-2xl">
+            <header className="flex items-start justify-between gap-4 border-b border-slate-800 bg-slate-900 p-4 sm:p-5">
               <div className="flex gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white"><FilePlus2 className="h-5 w-5" /></div>
                 <div>
@@ -755,7 +755,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({
               <button type="button" onClick={() => setIsCreating(false)} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white" aria-label="بستن"><X className="h-5 w-5" /></button>
             </header>
 
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-5">
+            <div className="space-y-6 p-4 sm:p-5">
               {createError && <div className="rounded-xl border border-rose-800/60 bg-rose-950/35 px-3 py-2 text-xs text-rose-200">{createError}</div>}
 
               <section>
@@ -797,7 +797,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({
 
               <section><InputLabel>یادداشت داخلی یا توضیحات مشتری</InputLabel><textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} rows={3} className="w-full resize-y rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs leading-6 text-white outline-none placeholder:text-slate-600 focus:border-violet-500" placeholder="شرایط پرداخت، توضیحات سفارش، نکات تحویل و…" /></section>
             </div>
-            <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900 p-4 sm:px-5"><span className="text-[11px] text-slate-500">فاکتور دستی و پرداخت‌های بعدی در فضای داده پایدار سرور ذخیره می‌شوند.</span><div className="flex gap-2"><button type="button" onClick={() => setIsCreating(false)} className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700">انصراف</button><button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-violet-950/60 hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"><FilePlus2 className="h-4 w-4" />{isSaving ? 'در حال صدور…' : 'صدور فاکتور'}</button></div></footer>
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900 p-4 sm:px-5"><span className="text-[11px] text-slate-500">فاکتور دستی و پرداخت‌های بعدی در فضای داده پایدار سرور ذخیره می‌شوند.</span><div className="flex gap-2"><button type="button" onClick={() => setIsCreating(false)} className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700">انصراف</button><button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-violet-950/60 hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"><FilePlus2 className="h-4 w-4" />{isSaving ? 'در حال صدور…' : 'صدور فاکتور'}</button></div></footer>
           </form>
         </div>
       )}

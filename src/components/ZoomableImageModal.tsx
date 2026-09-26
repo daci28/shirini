@@ -376,8 +376,16 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             className="max-h-full max-w-full select-none object-contain shadow-2xl transform-gpu"
             style={{
               transformOrigin: 'center center',
+              // Ask the browser to use its highest-quality interpolation when
+              // the original receipt is enlarged. Without this hint some GPU
+              // compositors use a fast low-quality raster while the transform
+              // layer is being scaled, which makes text look unnecessarily
+              // blurry after the first few wheel ticks.
+              imageRendering: 'high-quality' as React.CSSProperties['imageRendering'],
+              backfaceVisibility: 'hidden',
               willChange: 'transform',
             }}
+            decoding="async"
             referrerPolicy="no-referrer"
           />
         </div>

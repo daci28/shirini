@@ -51,10 +51,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   // modal for every pointer event.
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
-  const [imageBaseSize, setImageBaseSize] = useState<{ width: number; height: number } | null>(null);
-  const [imageLoadError, setImageLoadError] = useState(false);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const zoomViewportRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef<Point>({ x: 0, y: 0 });
   const transformFrame = useRef<number | null>(null);
@@ -66,11 +63,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     const image = imageRef.current;
     if (!image) return;
     const { x, y } = panRef.current;
-    // The zoom is applied to the element's actual layout size below, rather
-    // than scaling a composited preview with transform: scale(). Browsers then
-    // resample the original pixels at the requested size, keeping small text
-    // sharp just like the Telegram viewer.
-    image.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    image.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${zoomRef.current})`;
   };
 
   const scheduleTransform = () => {
@@ -89,22 +82,8 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     scheduleTransform();
   };
 
-  const setZoomLevel = (nextZoom: number, focalPoint?: Point) => {
-    const previousZoom = zoomRef.current;
+  const setZoomLevel = (nextZoom: number) => {
     const clampedZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
-
-    // Keep the image point under the pointer fixed while changing scale.
-    // Because the image transform origin is its center, `pan` is measured from
-    // that same center. This is the key difference from simply scaling around
-    // the middle of the image.
-    if (focalPoint && previousZoom > 0 && clampedZoom > 1) {
-      const scaleRatio = clampedZoom / previousZoom;
-      panRef.current = {
-        x: focalPoint.x - (focalPoint.x - panRef.current.x) * scaleRatio,
-        y: focalPoint.y - (focalPoint.y - panRef.current.y) * scaleRatio,
-      };
-    }
-
     zoomRef.current = clampedZoom;
     if (clampedZoom <= 1) panRef.current = { x: 0, y: 0 };
     scheduleTransform();
@@ -124,22 +103,8 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
 
   useEffect(() => {
     activePointers.current.clear();
-    setImageBaseSize(null);
-    setImageLoadError(false);
     resetView();
   }, [imageSrc]);
-
-  const handleImageLoad = () => {
-    const image = imageRef.current;
-    if (!image) return;
-    // At zoom 1 the browser has already constrained the image to the modal.
-    // Capture that crisp, correctly-contained size and use it as the base for
-    // pixel-preserving zoom dimensions.
-    const rect = image.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setImageBaseSize({ width: rect.width, height: rect.height });
-    }
-  };
 
   useEffect(() => () => {
     if (transformFrame.current !== null) {
@@ -264,58 +229,13 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     }
   };
 
-  const zoomAtPointer = (clientX: number, clientY: number, deltaY: number, bounds: DOMRect) => {
-    const focalPoint = {
-      x: clientX - (bounds.left + bounds.width / 2),
-      y: clientY - (bounds.top + bounds.height / 2),
-    };
-    const factor = Math.exp(-deltaY * WHEEL_ZOOM_SENSITIVITY);
-    setZoomLevel(zoomRef.current * factor, focalPoint);
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    // A higher factor makes trackpad/wheel inspection feel responsive without
+    // making individual wheel ticks jump past small receipt details.
+    const factor = Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY);
+    setZoomLevel(zoomRef.current * factor);
   };
-
-  // React's wheel listener can be treated as passive by some browser/page
-  // combinations. Install a native non-passive listener as well, otherwise
-  // the panel page scrolls underneath the modal while the image is zoomed.
-  useEffect(() => {
-    const viewport = zoomViewportRef.current;
-    if (!viewport) return undefined;
-
-    // Lock the document itself while the modal is open. Preventing the wheel
-    // event alone is not enough in every Chromium/trackpad combination because
-    // scroll chaining can happen after the event reaches the browser root.
-    const documentElement = document.documentElement;
-    const body = document.body;
-    const previousHtmlOverflow = documentElement.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    const previousBodyOverscroll = body.style.overscrollBehavior;
-    // Keep the page from participating in scroll chaining while the modal is
-    // open, without changing body positioning (which can hide fixed overlays
-    // in some Chromium layouts).
-    documentElement.style.overflow = 'hidden';
-    documentElement.style.overscrollBehavior = 'none';
-    body.style.overflow = 'hidden';
-    body.style.overscrollBehavior = 'none';
-
-    const preventPageScroll = (event: WheelEvent) => {
-      // The listener is capture-phase and non-passive. Stop the browser and
-      // any other page listener first; only zoom when the pointer is in the
-      // image viewport.
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (!viewport.contains(event.target as Node)) return;
-      zoomAtPointer(event.clientX, event.clientY, event.deltaY, viewport.getBoundingClientRect());
-    };
-    // Capture at window level as a final guard against browser/React passive
-    // wheel handling. The page behind the modal must never receive this event.
-    window.addEventListener('wheel', preventPageScroll, { capture: true, passive: false });
-    return () => {
-      window.removeEventListener('wheel', preventPageScroll, true);
-      documentElement.style.overflow = previousHtmlOverflow;
-      documentElement.style.overscrollBehavior = '';
-      body.style.overflow = previousBodyOverflow;
-      body.style.overscrollBehavior = previousBodyOverscroll;
-    };
-  }, [imageSrc]);
 
   return (
     <div
@@ -396,14 +316,10 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
           onPointerUp={finishPointer}
           onPointerCancel={finishPointer}
           onLostPointerCapture={finishPointer}
-          ref={zoomViewportRef}
-          onWheelCapture={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
+          onWheel={handleWheel}
           // Disable browser page gestures here so a two-finger pinch controls
           // the image, not the entire page.
-          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+          style={{ touchAction: 'none' }}
         >
           {hasGallery && (
             <>
@@ -430,29 +346,17 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             </>
           )}
           <img
-            key={imageSrc}
             ref={imageRef}
             src={imageSrc}
             alt={alt}
-            onLoad={handleImageLoad}
-            onError={() => setImageLoadError(true)}
             draggable={false}
-            className={`${imageBaseSize ? '' : 'max-h-full max-w-full'} select-none object-contain shadow-2xl`}
+            className="max-h-full max-w-full select-none object-contain shadow-2xl transform-gpu"
             style={{
-              width: imageBaseSize ? `${imageBaseSize.width * zoom}px` : undefined,
-              height: imageBaseSize ? `${imageBaseSize.height * zoom}px` : undefined,
-              maxWidth: imageBaseSize ? 'none' : undefined,
-              maxHeight: imageBaseSize ? 'none' : undefined,
               transformOrigin: 'center center',
-              imageRendering: 'auto',
+              willChange: 'transform',
             }}
             referrerPolicy="no-referrer"
           />
-          {imageLoadError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-950/95 p-6 text-center text-sm text-rose-200">
-              تصویر قابل بارگذاری نیست. لطفاً دوباره تلاش کنید یا از گزینهٔ «باز کردن اندازه اصلی» استفاده کنید.
-            </div>
-          )}
         </div>
 
         {hasGallery && (

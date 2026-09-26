@@ -82,8 +82,22 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     scheduleTransform();
   };
 
-  const setZoomLevel = (nextZoom: number) => {
+  const setZoomLevel = (nextZoom: number, focalPoint?: Point) => {
+    const previousZoom = zoomRef.current;
     const clampedZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
+
+    // Keep the image point under the pointer fixed while changing scale.
+    // Because the image transform origin is its center, `pan` is measured from
+    // that same center. This is the key difference from simply scaling around
+    // the middle of the image.
+    if (focalPoint && previousZoom > 0 && clampedZoom > 1) {
+      const scaleRatio = clampedZoom / previousZoom;
+      panRef.current = {
+        x: focalPoint.x - (focalPoint.x - panRef.current.x) * scaleRatio,
+        y: focalPoint.y - (focalPoint.y - panRef.current.y) * scaleRatio,
+      };
+    }
+
     zoomRef.current = clampedZoom;
     if (clampedZoom <= 1) panRef.current = { x: 0, y: 0 };
     scheduleTransform();
@@ -231,10 +245,19 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    // Calculate the pointer position relative to the viewport center, which is
+    // also the transform origin of the image. Zooming then keeps this exact
+    // point anchored instead of always pulling the image toward its center.
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const focalPoint = {
+      x: event.clientX - (bounds.left + bounds.width / 2),
+      y: event.clientY - (bounds.top + bounds.height / 2),
+    };
+
     // A higher factor makes trackpad/wheel inspection feel responsive without
     // making individual wheel ticks jump past small receipt details.
     const factor = Math.exp(-event.deltaY * WHEEL_ZOOM_SENSITIVITY);
-    setZoomLevel(zoomRef.current * factor);
+    setZoomLevel(zoomRef.current * factor, focalPoint);
   };
 
   return (

@@ -278,12 +278,15 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     const viewport = zoomViewportRef.current;
     if (!viewport) return undefined;
     const preventPageScroll = (event: WheelEvent) => {
+      if (!viewport.contains(event.target as Node)) return;
       event.preventDefault();
       event.stopPropagation();
       zoomAtPointer(event.clientX, event.clientY, event.deltaY, viewport.getBoundingClientRect());
     };
-    viewport.addEventListener('wheel', preventPageScroll, { passive: false });
-    return () => viewport.removeEventListener('wheel', preventPageScroll);
+    // Capture at window level as a final guard against browser/React passive
+    // wheel handling. The page behind the modal must never receive this event.
+    window.addEventListener('wheel', preventPageScroll, { capture: true, passive: false });
+    return () => window.removeEventListener('wheel', preventPageScroll, true);
   }, [imageSrc]);
 
   return (
@@ -366,9 +369,13 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
           onPointerCancel={finishPointer}
           onLostPointerCapture={finishPointer}
           ref={zoomViewportRef}
+          onWheelCapture={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           // Disable browser page gestures here so a two-finger pinch controls
           // the image, not the entire page.
-          style={{ touchAction: 'none' }}
+          style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
         >
           {hasGallery && (
             <>

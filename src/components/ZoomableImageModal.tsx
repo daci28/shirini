@@ -51,6 +51,7 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   // modal for every pointer event.
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
+  const [imageBaseSize, setImageBaseSize] = useState<{ width: number; height: number } | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef<Point>({ x: 0, y: 0 });
@@ -63,7 +64,11 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     const image = imageRef.current;
     if (!image) return;
     const { x, y } = panRef.current;
-    image.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${zoomRef.current})`;
+    // The zoom is applied to the element's actual layout size below, rather
+    // than scaling a composited preview with transform: scale(). Browsers then
+    // resample the original pixels at the requested size, keeping small text
+    // sharp just like the Telegram viewer.
+    image.style.transform = `translate3d(${x}px, ${y}px, 0)`;
   };
 
   const scheduleTransform = () => {
@@ -117,8 +122,21 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
 
   useEffect(() => {
     activePointers.current.clear();
+    setImageBaseSize(null);
     resetView();
   }, [imageSrc]);
+
+  const handleImageLoad = () => {
+    const image = imageRef.current;
+    if (!image) return;
+    // At zoom 1 the browser has already constrained the image to the modal.
+    // Capture that crisp, correctly-contained size and use it as the base for
+    // pixel-preserving zoom dimensions.
+    const rect = image.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setImageBaseSize({ width: rect.width, height: rect.height });
+    }
+  };
 
   useEffect(() => () => {
     if (transformFrame.current !== null) {
@@ -372,13 +390,15 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             ref={imageRef}
             src={imageSrc}
             alt={alt}
+            onLoad={handleImageLoad}
             draggable={false}
-            className="max-h-full max-w-full select-none object-contain shadow-2xl"
+            className={`${imageBaseSize ? '' : 'max-h-full max-w-full'} select-none object-contain shadow-2xl`}
             style={{
+              width: imageBaseSize ? `${imageBaseSize.width * zoom}px` : undefined,
+              height: imageBaseSize ? `${imageBaseSize.height * zoom}px` : undefined,
+              maxWidth: imageBaseSize ? 'none' : undefined,
+              maxHeight: imageBaseSize ? 'none' : undefined,
               transformOrigin: 'center center',
-              // Do not force the image into a permanently rasterized GPU layer.
-              // That optimization can scale the already-rasterized preview and
-              // make receipts look softer than the original Telegram image.
               imageRendering: 'auto',
             }}
             referrerPolicy="no-referrer"

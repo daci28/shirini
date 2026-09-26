@@ -277,6 +277,19 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
   useEffect(() => {
     const viewport = zoomViewportRef.current;
     if (!viewport) return undefined;
+
+    // Lock the document itself while the modal is open. Preventing the wheel
+    // event alone is not enough in every Chromium/trackpad combination because
+    // scroll chaining can happen after the event reaches the browser root.
+    const documentElement = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = documentElement.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+    documentElement.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+
     const preventPageScroll = (event: WheelEvent) => {
       if (!viewport.contains(event.target as Node)) return;
       event.preventDefault();
@@ -286,7 +299,12 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
     // Capture at window level as a final guard against browser/React passive
     // wheel handling. The page behind the modal must never receive this event.
     window.addEventListener('wheel', preventPageScroll, { capture: true, passive: false });
-    return () => window.removeEventListener('wheel', preventPageScroll, true);
+    return () => {
+      window.removeEventListener('wheel', preventPageScroll, true);
+      documentElement.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+    };
   }, [imageSrc]);
 
   return (

@@ -35,9 +35,21 @@ interface TelegramContext {
   telegramUser?: TelegramUserProfile;
 }
 
+function normalizeGroupId(id: string | number | undefined): string {
+  if (!id) return '';
+  const str = String(id).trim();
+  if (!str) return '';
+  if (/^\d+$/.test(str)) return `-100${str}`;
+  if (str.startsWith('-') && !str.startsWith('-100') && /^\-\d+$/.test(str)) {
+    return `-100${str.slice(1)}`;
+  }
+  return str;
+}
+
 // Notify topic in forum supergroup if configured
 async function notifyForumTopic(ctx: TelegramContext, key: string, messageText: string, photo?: string) {
-  if (!ctx.botSettings?.forumGroupId || !ctx.token) return;
+  const groupId = normalizeGroupId(ctx.botSettings?.forumGroupId);
+  if (!groupId || !ctx.token) return;
   const topic = (ctx.botSettings.forumTopics || []).find((t: any) => t.key === key);
   if (topic && (topic.enabled === false || topic.autoReport === false)) return;
 
@@ -52,7 +64,7 @@ async function notifyForumTopic(ctx: TelegramContext, key: string, messageText: 
           const base64Data = matches[2];
           const buffer = Buffer.from(base64Data, 'base64');
           const formData = new FormData();
-          formData.append('chat_id', ctx.botSettings.forumGroupId);
+          formData.append('chat_id', groupId);
           formData.append('parse_mode', 'HTML');
           formData.append('caption', messageText);
           if (threadId) formData.append('message_thread_id', String(threadId));
@@ -71,7 +83,7 @@ async function notifyForumTopic(ctx: TelegramContext, key: string, messageText: 
     } else {
       try {
         const payload: any = {
-          chat_id: ctx.botSettings.forumGroupId,
+          chat_id: groupId,
           parse_mode: 'HTML',
           photo,
           caption: messageText,
@@ -92,7 +104,7 @@ async function notifyForumTopic(ctx: TelegramContext, key: string, messageText: 
 
   try {
     const textPayload: any = {
-      chat_id: ctx.botSettings.forumGroupId,
+      chat_id: groupId,
       parse_mode: 'HTML',
       text: messageText,
     };

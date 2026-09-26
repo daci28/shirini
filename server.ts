@@ -3504,6 +3504,17 @@ async function startServer() {
     });
   });
 
+  function normalizeGroupId(id: string | number | undefined): string {
+    if (!id) return '';
+    const str = String(id).trim();
+    if (!str) return '';
+    if (/^\d+$/.test(str)) return `-100${str}`;
+    if (str.startsWith('-') && !str.startsWith('-100') && /^\-\d+$/.test(str)) {
+      return `-100${str.slice(1)}`;
+    }
+    return str;
+  }
+
   // --- Telegram Forum Supergroup Topics API ---
 
   // Helper function to send report to Telegram topic
@@ -3512,7 +3523,8 @@ async function startServer() {
     messageText: string,
     photoUrl?: string | string[]
   ) {
-    const groupId = String(botSettings.forumGroupId || '').trim();
+    const rawGroupId = String(botSettings.forumGroupId || '').trim();
+    const groupId = normalizeGroupId(rawGroupId);
     if (!groupId) {
       console.warn(`[sendToTelegramTopic:${key}] Skipped: forumGroupId is not configured in bot settings.`);
       return;

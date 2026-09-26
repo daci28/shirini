@@ -31,6 +31,54 @@ const getTelegramDisplayName = (message?: any): string => {
   return fullName || from?.username || '';
 };
 
+function normalizeGroupId(id: string | number | undefined): string {
+  if (!id) return '';
+  const str = String(id).trim();
+  if (!str) return '';
+  if (/^\d+$/.test(str)) return `-100${str}`;
+  if (str.startsWith('-') && !str.startsWith('-100') && /^\-\d+$/.test(str)) {
+    return `-100${str.slice(1)}`;
+  }
+  return str;
+}
+
+async function notifyForumTopic(ctx: TelegramContext, key: string, messageText: string, photo?: string) {
+  const rawId = ctx.botSettings?.forumGroupId;
+  const groupId = normalizeGroupId(rawId);
+  if (!groupId || !ctx.token) return;
+  const topic = (ctx.botSettings.forumTopics || []).find((t: any) => t.key === key);
+  if (topic && (topic.enabled === false || topic.autoReport === false)) return;
+  const threadId = topic?.threadId ? Number(topic.threadId) : undefined;
+
+  const textPayload: any = {
+    chat_id: groupId,
+    parse_mode: 'HTML',
+    text: messageText,
+  };
+  if (threadId) textPayload.message_thread_id = threadId;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${ctx.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(textPayload),
+    });
+    const resData = (await res.json().catch(() => ({}))) as any;
+    if (resData?.ok) return;
+
+    if (threadId) {
+      delete textPayload.message_thread_id;
+      await fetch(`https://api.telegram.org/bot${ctx.token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(textPayload),
+      });
+    }
+  } catch (err) {
+    console.error('checkout notifyForumTopic error:', err);
+  }
+}
+
 async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], photo?: string) {
   if (ctx.messageId && !photo) {
     try {
@@ -649,6 +697,39 @@ async function createOrder(ctx: TelegramContext) {
   customer.totalOrdersCount = (customer.totalOrdersCount || 0) + 1;
   customer.totalSpentTomans = (customer.totalSpentTomans || 0) + newOrder.totalAmount;
   customer.lastActiveAt = now;
+
+  // Auto-report new customer order to the forum supergroup 'orders' topic
+  const itemsList = newOrder.items
+    .map((item) => `▫️ <b>${item.productName}</b>: ${item.quantity.toLocaleString('fa-IR')} ${item.unit || 'عدد'} (مبلغ: ${(item.price * item.quantity).toLocaleString('fa-IR')} تومان)`)
+    .join('\n');
+
+  const paymentLabel = newOrder.paymentMethod === 'online_payment' ? '💳 کارت به کارت / آنلاین' : '💵 پرداخت درب منزل / تحویل حضوری';
+  const deliveryLabel = newOrder.deliveryMethod === 'delivery' ? '🛵 پیک موتوری' : '🏬 تحویل حضوری در قنادی';
+
+  const orderReport = `🛒📦 <b>سفارش جدید مشتری در ربات تلگرام ثبت شد!</b>\n\n` +
+    `🔖 <b>کد رهگیری:</b> <code>${newOrder.orderNumber}</code>\n` +
+    `👤 <b>مشتری:</b> ${newOrder.customerName} (${newOrder.customerPhone || 'بدون شماره'})\n` +
+    (newOrder.customerUsername ? `📱 <b>آیدی تلگرام:</b> @${newOrder.customerUsername}\n` : '') +
+    `🛵 <b>نحوه دریافت:</b> ${deliveryLabel}\n` +
+    (newOrder.customerAddress ? `📍 <b>آدرس تحویل:</b> ${newOrder.customerAddress}\n` : '') +
+    `💳 <b>روش پرداخت:</b> ${paymentLabel}\n` +
+    `────────────────\n` +
+    `🛍️ <b>اقلام سفارش:</b>\n${itemsList}\n` +
+    `────────────────\n` +
+    (newOrder.discountAmount ? `🎟️ <b>تخفیف:</b> ${newOrder.discountAmount.toLocaleString('fa-IR')} تومان\n` : '') +
+    (newOrder.shippingFee ? `🛵 <b>هزینه ارسال:</b> ${newOrder.shippingFee.toLocaleString('fa-IR')} تومان\n` : '') +
+    `💵 <b>مبلغ نهایی:</b> <b>${newOrder.totalAmount.toLocaleString('fa-IR')} تومان</b>\n` +
+    `⏰ <b>زمان ثبت:</b> ${new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}`;
+
+  void notifyForumTopic(ctx, 'orders', orderReport);
+
+  if (newOrder.couponCode) {
+    void notifyForumTopic(
+      ctx,
+      'discounts',
+      `🎟️ <b>استفاده از کد تخفیف در سفارش ${newOrder.orderNumber}</b>\n\n👤 مشتری: ${newOrder.customerName}\n🏷️ کد: <code>${newOrder.couponCode}</code>\n💰 مبلغ تخفیف: <b>${(newOrder.discountAmount || 0).toLocaleString('fa-IR')} تومان</b>`
+    );
+  }
 
   if (newOrder.paymentMethod === 'online_payment') {
     const confirmText = botText(ctx, 'orderSuccessOnlineMessage', {

@@ -5240,7 +5240,18 @@ async function startServer() {
           const got = data.result.length;
           for (const update of data.result) {
             pollingOffset = update.update_id + 1;
-            await safeHandleTelegramUpdate(token, update);
+            // Never let a Telegram API request made by a handler (for example
+            // a report to a forum topic) block the long-poll loop forever. A
+            // hung fetch used to leave pollInFlight=true permanently; the bot
+            // then appeared to work for a while and silently stopped handling
+            // all later updates until Railway restarted it.
+            await Promise.race([
+              safeHandleTelegramUpdate(token, update),
+              new Promise<void>((resolve) => setTimeout(() => {
+                console.error(`[telegram:${INSTANCE_ID}] update ${update.update_id} timed out; continuing polling`);
+                resolve();
+              }, 30_000)),
+            ]);
           }
           // Re-issue getUpdates immediately (no idle gap) so this instance
           // always holds a pending long-poll, minimising the chance a stale
@@ -5268,6 +5279,9 @@ async function startServer() {
         pollingInterval = setTimeout(pollOnce, 3000);
         return;
       }
+      // Always release the in-flight guard before scheduling the next request.
+      // This is intentionally kept in one place so a handled Telegram/API
+      // failure cannot strand the poller.
       pollInFlight = false;
       poll();
     };

@@ -373,10 +373,13 @@ export const ZoomableImageModal: React.FC<ZoomableImageModalProps> = ({
             src={imageSrc}
             alt={alt}
             draggable={false}
-            className="max-h-full max-w-full select-none object-contain shadow-2xl transform-gpu"
+            className="max-h-full max-w-full select-none object-contain shadow-2xl"
             style={{
               transformOrigin: 'center center',
-              willChange: 'transform',
+              // Do not force the image into a permanently rasterized GPU layer.
+              // That optimization can scale the already-rasterized preview and
+              // make receipts look softer than the original Telegram image.
+              imageRendering: 'auto',
             }}
             referrerPolicy="no-referrer"
           />

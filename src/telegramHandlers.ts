@@ -46,6 +46,23 @@ function normalizeGroupId(id: string | number | undefined): string {
   return str;
 }
 
+// Telegram servers cannot fetch a browser-relative path such as
+// /product-images/foo.jpg. Product uploads intentionally store relative paths,
+// so resolve them against the public Railway domain before sending.
+function toTelegramImageUrl(reference: string): string | null {
+  const value = String(reference || '').trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (!value.startsWith('/')) return null;
+  const base = String(
+    process.env.PUBLIC_BASE_URL
+      || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
+      || process.env.RAILWAY_STATIC_URL
+      || '',
+  ).trim().replace(/\/+$/, '');
+  return base ? `${base}${value}` : null;
+}
+
 // Notify topic in forum supergroup if configured
 async function notifyForumTopic(ctx: TelegramContext, key: string, messageText: string, photo?: string) {
   const groupId = normalizeGroupId(ctx.botSettings?.forumGroupId);
@@ -426,7 +443,9 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
       const inCartQty = itemInCart ? itemInCart.quantity : 0;
       const { caption, buttons } = buildProductCard(prod, inCartQty);
       
-      const allImages = prod.images && prod.images.length > 0 ? prod.images : (prod.image ? [prod.image] : []);
+      const allImages = (prod.images && prod.images.length > 0 ? prod.images : (prod.image ? [prod.image] : []))
+        .map((img: string) => toTelegramImageUrl(img))
+        .filter((img): img is string => Boolean(img));
       
       if (allImages.length > 0) {
         if (allImages.length === 1) {
@@ -434,7 +453,7 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
           await tgSend(ctx, caption, buttons, allImages[0]);
         } else {
           // Multiple images - send as media group
-          const media = allImages.map((img: string, idx: number) => ({
+          const media = allImages.slice(0, 10).map((img: string, idx: number) => ({
             type: 'photo',
             media: img,
             caption: idx === 0 ? caption : undefined,

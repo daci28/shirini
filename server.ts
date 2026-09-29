@@ -2787,16 +2787,17 @@ async function startServer() {
     // Keep the customer-facing message below Telegram's 4096-character limit
     // even if a legacy/imported invoice has many unusually long item names.
     const visibleItems = invoice.items.slice(0, 8).map((item, index) =>
-      `▫️ ${index + 1}. ${formatCustomerInvoiceText(item.title)} — ${item.quantity.toLocaleString('fa-IR')} ${formatCustomerInvoiceText(item.unit || 'عدد', 16)} × ${item.unitPrice.toLocaleString('fa-IR')} = <b>${item.totalAmount.toLocaleString('fa-IR')} تومان</b>`,
+      `▫️ ${index + 1}. ${formatCustomerInvoiceText(item.title || item.description || 'ردیف فاکتور')} — ${item.quantity.toLocaleString('fa-IR')} ${formatCustomerInvoiceText(item.unit || 'عدد', 16)} × ${item.unitPrice.toLocaleString('fa-IR')} = <b>${item.totalAmount.toLocaleString('fa-IR')} تومان</b>`, 
     );
     if (invoice.items.length > 8) visibleItems.push(`▫️ و ${invoice.items.length - 8} قلم دیگر`);
 
+    const isCancelled = invoice.status === 'cancelled';
     const lines = [
-      '🧾 <b>فاکتور شما صادر شد</b>',
+      isCancelled ? '❌ <b>فاکتور شما لغو شد</b>' : '🧾 <b>فاکتور شما صادر شد</b>',
       '',
       `🔖 شماره فاکتور: <code>${formatCustomerInvoiceText(invoice.invoiceNumber, 80)}</code>`,
       `📌 عنوان فاکتور: <b>${formatCustomerInvoiceText(invoice.title || 'فاکتور')}</b>`,
-      `📌 وضعیت: ${customerInvoiceStatusLabel(invoice.status)}`, 
+      isCancelled ? '🚫 این فاکتور دیگر قابل پرداخت نیست.' : `📌 وضعیت: ${customerInvoiceStatusLabel(invoice.status)}`, 
       '',
       '<b>اقلام فاکتور</b>',
       ...visibleItems,
@@ -2980,7 +2981,7 @@ async function startServer() {
       const quantity = invoiceQuantity(rawItem.quantity);
       const unitPrice = invoiceMoney(rawItem.unitPrice);
       const itemDiscount = invoiceMoney(rawItem.discountAmount);
-      if (!title || quantity === null || unitPrice === null || itemDiscount === null) {
+      if (quantity === null || unitPrice === null || itemDiscount === null) {
         res.status(400).json({ error: `اطلاعات ردیف ${index + 1} کامل یا معتبر نیست.` });
         return;
       }
@@ -6804,6 +6805,21 @@ async function startServer() {
             body: JSON.stringify({
               chat_id: chatId,
               text: '❌ فاکتور مورد نظر یافت نشد.',
+              parse_mode: 'HTML',
+              reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
+            }),
+          });
+          return;
+        }
+
+        if (invoice.status === 'cancelled' || invoice.status === 'refunded') {
+          userStates.delete(chatId);
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: `❌ <b>این فاکتور لغو شده است.</b>\n\n🔖 کد فاکتور: <code>${formatCustomerInvoiceText(invoice.invoiceNumber, 80)}</code>\n🚫 امکان پرداخت یا ارسال فیش برای این فاکتور وجود ندارد.`,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),

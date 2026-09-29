@@ -272,8 +272,9 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
     cap += `📂 <b>دسته‌بندی:</b> ${prod.category || '---'}\n`;
     if (prod.productCode) {
-      cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>  📦 <b>موجودی:</b> ${toPersianDigits(Number(prod.stockKgOrCount ?? 0))} ${prod.unit || 'عدد'}\n`;
+      cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
     }
+    cap += `📦 <b>موجودی:</b> ${toPersianDigits(Number(prod.stockKgOrCount ?? 0))} ${prod.unit || 'عدد'}\n`;
     cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit ? ` / هر ${prod.unit}` : ''}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 

@@ -175,9 +175,9 @@ function buildProductCard(prod: any, inCartQty: number) {
   cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
   cap += `📂 <b>دسته‌بندی:</b> ${escapeHtml(prod.category || '---')}\n`;
   if (prod.productCode) {
-    cap += `🏷️ <b>کد محصول:</b> <code>${escapeHtml(prod.productCode)}</code>`;
-    cap += `  📦 <b>موجودی:</b> ${Number(prod.stockKgOrCount ?? 0).toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'عدد')}\n`;
+    cap += `🏷️ <b>کد محصول:</b> <code>${escapeHtml(prod.productCode)}</code>\n`;
   }
+  cap += `📦 <b>موجودی:</b> ${Number(prod.stockKgOrCount ?? 0).toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'عدد')}\n`;
   cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit ? ` / هر ${escapeHtml(prod.unit)}` : ''}\n`;
   cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
 
@@ -452,34 +452,18 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
           // Single image with caption and buttons
           await tgSend(ctx, caption, buttons, allImages[0]);
         } else {
-          // Multiple images - send as media group
-          const media = allImages.slice(0, 10).map((img: string, idx: number) => ({
-            type: 'photo',
-            media: img,
-            caption: idx === 0 ? caption : undefined,
-            parse_mode: idx === 0 ? 'HTML' : undefined
-          }));
-          
-          await fetch(`https://api.telegram.org/bot${ctx.token}/sendMediaGroup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: ctx.chatId,
-              media: media
-            })
-          });
-          
-          // Send buttons separately
-          await fetch(`https://api.telegram.org/bot${ctx.token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: ctx.chatId,
-              text: `<b>${prod.name}</b>`,
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: buttons }
-            })
-          });
+          // Telegram does not allow reply_markup on sendMediaGroup. Send the
+          // first image with the full caption and keyboard so the buttons stay
+          // attached to the product description, then send the remaining
+          // gallery images without creating a separate "product name" message.
+          await tgSend(ctx, caption, buttons, allImages[0]);
+          for (const image of allImages.slice(1, 10)) {
+            await fetch(`https://api.telegram.org/bot${ctx.token}/sendPhoto`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: ctx.chatId, photo: image }),
+            });
+          }
         }
       } else {
         // No images - send text only

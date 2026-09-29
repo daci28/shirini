@@ -17,7 +17,7 @@ import {
   Tag,
   Upload
 } from 'lucide-react';
-import { Product, ProductCategory } from '../types';
+import { BotSettings, Product, ProductCategory } from '../types';
 import { matchesSearchValues } from '../utils/search';
 import { formatPrice, toPersianDigits } from '../utils/formatters';
 import { AddProductModal } from './AddProductModal';
@@ -30,6 +30,7 @@ interface ProductManagerProps {
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<Product>;
   onUpdateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
+  botSettings?: BotSettings;
 }
 
 export const ProductManager: React.FC<ProductManagerProps> = ({
@@ -37,6 +38,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
   onAddProduct,
   onUpdateProduct,
   onDeleteProduct,
+  botSettings,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -230,12 +232,15 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
                       <span>{product.isAvailable ? 'موجود' : 'ناموجود'}</span>
                     </button>
 
-                    {/* Product Code */}
+                    {/* Product Code + Inventory */}
                     {product.productCode && (
                       <span className="px-2 py-1 rounded-xl text-[10px] font-mono font-bold bg-slate-900/85 backdrop-blur-md text-amber-300 border border-amber-500/40 shrink-0">
                         کد: {product.productCode}
                       </span>
                     )}
+                    <span className="px-2 py-1 rounded-xl text-[10px] font-bold bg-slate-900/85 backdrop-blur-md text-cyan-200 border border-cyan-500/40 shrink-0">
+                      موجودی: {Number(product.stockKgOrCount ?? 0).toLocaleString('fa-IR')} {product.unit || 'عدد'}
+                    </span>
                   </div>
 
                   {/* Quick Change Photo Button */}
@@ -325,6 +330,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddProduct={onAddProduct}
+        shippingPricingMode={botSettings?.shippingPricingMode || 'fixed'}
       />
 
       {/* Edit Price Modal */}
@@ -333,6 +339,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({
         product={editingPriceProduct}
         onClose={() => setEditingPriceProduct(null)}
         onUpdateProduct={onUpdateProduct}
+        shippingPricingMode={botSettings?.shippingPricingMode || 'fixed'}
       />
 
       {/* Change Photo Modal with Upload */}

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, Sparkles, CakeSlice, Check, Image as ImageIcon, Trash2 } from 'lucide-react';
-import { Product, ProductCategory } from '../types';
+import { Product, ProductCategory, ShippingPricingMode } from '../types';
 import { formatPrice } from '../utils/formatters';
 import UploadProgressBar from './UploadProgressBar';
 import { uploadImagesWithProgress, type UploadProgress } from '../utils/uploadWithProgress';
@@ -9,6 +9,7 @@ interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<Product>;
+  shippingPricingMode?: ShippingPricingMode;
 }
 
 const PRESET_IMAGES = [
@@ -27,6 +28,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   isOpen,
   onClose,
   onAddProduct,
+  shippingPricingMode = 'fixed',
 }) => {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('شیرینی تر و خامه‌ای');
@@ -279,7 +281,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
           </div>
 
-          <div>
+          {shippingPricingMode === 'per_product' && (<div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">
               هزینه ارسال این محصول (تومان)
             </label>
@@ -292,6 +294,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
             />
             <p className="text-[11px] text-emerald-400 mt-1">۰ تومان یعنی ارسال رایگان</p>
+          </div>)}
+
+          {/* Inventory */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">موجودی محصول ({unit})</label>
+            <input type="number" min="0" step="0.01" value={stockKgOrCount} onChange={(e) => setStockKgOrCount(e.target.value)} placeholder="مثلاً ۲۰" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono" />
+            <p className="text-[11px] text-slate-400 mt-1">مشتری بیشتر از این مقدار نمی‌تواند به سبد خرید اضافه کند.</p>
           </div>
 
           {/* Real File Upload Section */}

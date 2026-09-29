@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, DollarSign, Check, Percent, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { Product } from '../types';
+import { Product, ShippingPricingMode } from '../types';
 import { formatPrice } from '../utils/formatters';
 
 interface EditPriceModalProps {
@@ -8,6 +8,7 @@ interface EditPriceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  shippingPricingMode?: ShippingPricingMode;
 }
 
 export const EditPriceModal: React.FC<EditPriceModalProps> = ({
@@ -15,10 +16,12 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
   isOpen,
   onClose,
   onUpdateProduct,
+  shippingPricingMode = 'fixed',
 }) => {
   if (!isOpen || !product) return null;
 
   const [price, setPrice] = useState(product.price.toString());
+  const [stockKgOrCount, setStockKgOrCount] = useState((product.stockKgOrCount ?? 0).toString());
   const [shippingFee, setShippingFee] = useState((product.shippingFee || 0).toString());
   const [discountPercent, setDiscountPercent] = useState(
     (product.discountPercent || 0).toString()
@@ -40,6 +43,7 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
     try {
       await onUpdateProduct(product.id, {
         price: priceNum,
+        stockKgOrCount: Math.max(0, Number(stockKgOrCount) || 0),
         shippingFee: Math.max(0, parseInt(shippingFee.replace(/[^0-9]/g, ''), 10) || 0),
         discountPercent: parseInt(discountPercent, 10) || 0,
       });
@@ -148,12 +152,18 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
             </p>
           </div>
 
-          {/* Product delivery fee */}
+          {/* Inventory */}
           <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">موجودی محصول ({product.unit})</label>
+            <input type="number" min="0" step="0.01" value={stockKgOrCount} onChange={(e) => setStockKgOrCount(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-mono" />
+          </div>
+
+          {/* Product delivery fee */}
+          {shippingPricingMode === 'per_product' && (<div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5">هزینه ارسال این محصول (تومان)</label>
             <input type="number" min="0" value={shippingFee} onChange={(e) => setShippingFee(e.target.value)} placeholder="۰ = رایگان" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-mono" />
             <p className="text-[11px] text-emerald-400 mt-1">۰ تومان یعنی ارسال رایگان</p>
-          </div>
+          </div>)}
 
           {/* Discount input */}
           <div>

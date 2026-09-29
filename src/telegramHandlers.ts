@@ -158,7 +158,8 @@ function buildProductCard(prod: any, inCartQty: number) {
   cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
   cap += `📂 <b>دسته‌بندی:</b> ${escapeHtml(prod.category || '---')}\n`;
   if (prod.productCode) {
-    cap += `🏷️ <b>کد محصول:</b> <code>${escapeHtml(prod.productCode)}</code>\n`;
+    cap += `🏷️ <b>کد محصول:</b> <code>${escapeHtml(prod.productCode)}</code>`;
+    cap += `  📦 <b>موجودی:</b> ${Number(prod.stockKgOrCount ?? 0).toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'عدد')}\n`;
   }
   cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit ? ` / هر ${escapeHtml(prod.unit)}` : ''}\n`;
   cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
@@ -490,6 +491,12 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
 
     const cart = ctx.userCarts.get(ctx.chatId) || [];
     const existing = cart.find((i: any) => i.productId === prod.id);
+    const availableStock = Math.max(0, Number(prod.stockKgOrCount ?? 0));
+    const currentQty = Number(existing?.quantity || 0);
+    if (availableStock <= 0 || currentQty + qtyToAdd > availableStock) {
+      await tgSend(ctx, `⚠️ موجودی «${escapeHtml(prod.name)}» کافی نیست.\n📦 موجودی فعلی: <b>${availableStock.toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'عدد')}</b>\n🛒 تعداد موجود در سبد شما: ${currentQty.toLocaleString('fa-IR')}`);
+      return true;
+    }
     let inCartQty = qtyToAdd;
     if (existing) {
       existing.quantity += qtyToAdd;
@@ -2072,6 +2079,12 @@ export async function handleTextMessage(ctx: TelegramContext, text: string): Pro
     if (prod) {
       const cart = ctx.userCarts.get(ctx.chatId) || [];
       const existing = cart.find(i => i.productId === prod.id);
+      const availableStock = Math.max(0, Number(prod.stockKgOrCount ?? 0));
+      const currentQty = Number(existing?.quantity || 0);
+      if (availableStock <= 0 || currentQty + qty > availableStock) {
+        await tgSend(ctx, `⚠️ موجودی «${escapeHtml(prod.name)}» کافی نیست.\n📦 موجودی فعلی: <b>${availableStock.toLocaleString('fa-IR')} ${escapeHtml(prod.unit || 'عدد')}</b>`);
+        return true;
+      }
       if (existing) {
         existing.quantity += qty;
       } else {

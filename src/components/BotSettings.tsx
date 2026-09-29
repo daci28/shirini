@@ -1332,11 +1332,12 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
               <input
                 type="number"
                 value={formData.shippingFee}
+                disabled={(formData.shippingPricingMode || 'fixed') !== 'fixed'}
                 onChange={(e) => handleInputChange('shippingFee', parseInt(e.target.value, 10) || 0)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500 font-mono disabled:cursor-not-allowed disabled:opacity-40"
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                معادل: {formatPrice(formData.shippingFee)}
+                {(formData.shippingPricingMode || 'fixed') === 'fixed' ? `معادل: ${formatPrice(formData.shippingFee)}` : 'در این حالت استفاده نمی‌شود'}
               </p>
             </div>
 

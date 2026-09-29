@@ -272,7 +272,7 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
     cap += `━━━━━━━━━━━━━━━━━━━\n\n`;
     cap += `📂 <b>دسته‌بندی:</b> ${prod.category || '---'}\n`;
     if (prod.productCode) {
-      cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>\n`;
+      cap += `🏷️ <b>کد محصول:</b> <code>${prod.productCode}</code>  📦 <b>موجودی:</b> ${toPersianDigits(Number(prod.stockKgOrCount ?? 0))} ${prod.unit || 'عدد'}\n`;
     }
     cap += `💰 <b>قیمت:</b> ${priceText}${prod.unit ? ` / هر ${prod.unit}` : ''}\n`;
     cap += `📦 <b>وضعیت:</b> ${prod.isAvailable ? '🟢 موجود و تازه' : '🔴 ناموجود'}\n`;
@@ -665,6 +665,13 @@ export const TelegramSimulator: React.FC<TelegramSimulatorProps> = ({
 
       const prod = products.find(p => p.id === prodId);
       if (!prod) return;
+
+      const availableStock = Math.max(0, Number(prod.stockKgOrCount ?? 0));
+      const currentQty = cart.find((item) => item.productId === prodId)?.quantity || 0;
+      if (availableStock <= 0 || currentQty + qtyToAdd > availableStock) {
+        addBotMessage(`⚠️ موجودی «${prod.name}» کافی نیست.\n📦 موجودی فعلی: ${toPersianDigits(availableStock)} ${prod.unit || 'عدد'}`);
+        return;
+      }
 
       let newQty = qtyToAdd;
       setCart(prev => {

@@ -395,6 +395,17 @@ if (persistedData) {
   console.log("Loaded persisted data");
 }
 
+// Older products did not have an inventory field. Give them a safe legacy
+// starting quantity so introducing inventory does not unexpectedly block every
+// existing product; admins can change it from the product editor.
+let migratedProductInventory = false;
+products = products.map((product) => {
+  if (typeof product.stockKgOrCount === 'number' && Number.isFinite(product.stockKgOrCount)) return product;
+  migratedProductInventory = true;
+  return { ...product, stockKgOrCount: 20 };
+});
+if (migratedProductInventory) saveData({ products, orders, customOrders, invoices, discounts, supportTickets, customers, backupSnapshots, backupSchedule, broadcasts });
+
 // Helper to save all data
 function saveAllData() {
   saveData({

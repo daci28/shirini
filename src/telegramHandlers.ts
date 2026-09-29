@@ -471,15 +471,35 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
             ? albumData.result[0]?.message_id
             : undefined;
           if (firstMessageId && buttons.length > 0) {
-            await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageReplyMarkup`, {
+            const keyboard = { inline_keyboard: buttons };
+            const markupResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageReplyMarkup`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 chat_id: ctx.chatId,
                 message_id: firstMessageId,
-                reply_markup: { inline_keyboard: buttons },
+                reply_markup: keyboard,
               }),
             });
+            const markupData = await markupResponse.json().catch(() => null) as any;
+
+            // Some Telegram clients/API versions reject editing only the
+            // keyboard on an album item. Re-submit the same caption together
+            // with the keyboard as a reliable fallback, still on the first
+            // image of the same album and without creating a new message.
+            if (!markupData?.ok) {
+              await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageCaption`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: ctx.chatId,
+                  message_id: firstMessageId,
+                  caption,
+                  parse_mode: 'HTML',
+                  reply_markup: keyboard,
+                }),
+              });
+            }
           }
         }
       } else {

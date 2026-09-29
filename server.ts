@@ -2795,7 +2795,8 @@ async function startServer() {
       '🧾 <b>فاکتور شما صادر شد</b>',
       '',
       `🔖 شماره فاکتور: <code>${formatCustomerInvoiceText(invoice.invoiceNumber, 80)}</code>`,
-      `📌 وضعیت: ${customerInvoiceStatusLabel(invoice.status)}`,
+      `📌 عنوان فاکتور: <b>${formatCustomerInvoiceText(invoice.title || 'فاکتور')}</b>`,
+      `📌 وضعیت: ${customerInvoiceStatusLabel(invoice.status)}`, 
       '',
       '<b>اقلام فاکتور</b>',
       ...visibleItems,
@@ -2809,6 +2810,9 @@ async function startServer() {
     if (invoice.paidAmount > 0) lines.push(`پرداخت‌شده: ${invoice.paidAmount.toLocaleString('fa-IR')} تومان`);
     if (invoice.remainingAmount > 0) lines.push(`⏳ <b>مانده قابل پرداخت: ${invoice.remainingAmount.toLocaleString('fa-IR')} تومان</b>`);
     if (invoice.dueDate) lines.push(`📅 سررسید: ${formatCustomerInvoiceText(invoice.dueDate, 32)}`);
+    if (invoice.notes) {
+      lines.push('', `📝 <b>توضیحات:</b>\n${formatCustomerInvoiceText(invoice.notes, 1000)}`);
+    }
     lines.push('', 'برای پیگیری یا هماهنگی بیشتر، از طریق همین ربات با ما در ارتباط باشید.');
     return lines.join('\n');
   };

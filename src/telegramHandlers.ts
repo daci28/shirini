@@ -452,54 +452,22 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
           // Single image with caption and buttons
           await tgSend(ctx, caption, buttons, allImages[0]);
         } else {
-          // Send the gallery as one Telegram media group so the images stay
-          // together. Telegram does not accept reply_markup in the initial
-          // sendMediaGroup payload, so attach the keyboard to the first album
-          // message immediately afterwards with editMessageReplyMarkup.
-          const media = allImages.slice(0, 10).map((img: string, idx: number) => ({
+          // Telegram does not reliably support inline keyboards on media-group
+          // messages. Keep the product's main image, caption, and buttons in
+          // one sendPhoto message, then send the remaining photos as a clean
+          // album. This avoids the unwanted standalone text/button message and
+          // keeps the controls attached to the product description.
+          await tgSend(ctx, caption, buttons, allImages[0]);
+          const remainingMedia = allImages.slice(1, 10).map((img: string) => ({
             type: 'photo',
             media: img,
-            ...(idx === 0 ? { caption, parse_mode: 'HTML' } : {}),
           }));
-          const albumResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/sendMediaGroup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: ctx.chatId, media }),
-          });
-          const albumData = await albumResponse.json().catch(() => null) as any;
-          const firstMessageId = albumData?.ok && Array.isArray(albumData.result)
-            ? albumData.result[0]?.message_id
-            : undefined;
-          if (firstMessageId && buttons.length > 0) {
-            const keyboard = { inline_keyboard: buttons };
-            const markupResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageReplyMarkup`, {
+          if (remainingMedia.length > 0) {
+            await fetch(`https://api.telegram.org/bot${ctx.token}/sendMediaGroup`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: ctx.chatId,
-                message_id: firstMessageId,
-                reply_markup: keyboard,
-              }),
+              body: JSON.stringify({ chat_id: ctx.chatId, media: remainingMedia }),
             });
-            const markupData = await markupResponse.json().catch(() => null) as any;
-
-            // Some Telegram clients/API versions reject editing only the
-            // keyboard on an album item. Re-submit the same caption together
-            // with the keyboard as a reliable fallback, still on the first
-            // image of the same album and without creating a new message.
-            if (!markupData?.ok) {
-              await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageCaption`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  chat_id: ctx.chatId,
-                  message_id: firstMessageId,
-                  caption,
-                  parse_mode: 'HTML',
-                  reply_markup: keyboard,
-                }),
-              });
-            }
           }
         }
       } else {

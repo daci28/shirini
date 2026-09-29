@@ -3252,6 +3252,8 @@ async function startServer() {
     const previousStatus = invoice.status;
     invoice.status = resolveManualInvoiceStatus(status, invoice);
     invoice.updatedAt = new Date().toISOString();
+    if (invoice.status === 'cancelled') invoice.cancelledAt = invoice.updatedAt;
+    else if (previousStatus === 'cancelled') delete invoice.cancelledAt;
     saveAllData();
     if (invoice.status !== previousStatus) {
       sendToTelegramTopic(
@@ -6814,16 +6816,19 @@ async function startServer() {
 
         if (invoice.status === 'cancelled' || invoice.status === 'refunded') {
           userStates.delete(chatId);
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          const cancellationText = `❌ <b>فاکتور لغو شده است</b>\n\n🔖 کد فاکتور: <code>${formatCustomerInvoiceText(invoice.invoiceNumber, 80)}</code>\n🚫 این فاکتور دیگر امکان پرداخت یا ارسال فیش ندارد.`;
+          const edited = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               chat_id: chatId,
-              text: `❌ <b>این فاکتور لغو شده است.</b>\n\n🔖 کد فاکتور: <code>${formatCustomerInvoiceText(invoice.invoiceNumber, 80)}</code>\n🚫 امکان پرداخت یا ارسال فیش برای این فاکتور وجود ندارد.`,
+              message_id: cb.message?.message_id,
+              text: cancellationText,
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]] },
             }),
           });
+          console.error('[invoice] cancelled payment message edit:', await edited.json().catch(() => ({})));
           return;
         }
 

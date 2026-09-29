@@ -484,6 +484,8 @@ export interface Invoice {
   customerNotificationCount?: number;
   createdAt: string;
   updatedAt: string;
+  /** When an admin cancelled this manual invoice. */
+  cancelledAt?: string;
 }
 
 export type CustomPrepaymentReviewStatus =

@@ -1310,6 +1310,20 @@ export const BotSettingsComponent: React.FC<BotSettingsProps> = ({
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">روش محاسبه هزینه پیک</label>
+            <select
+              value={formData.shippingPricingMode || 'fixed'}
+              onChange={(e) => handleInputChange('shippingPricingMode', e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500"
+            >
+              <option value="fixed">قیمت ثابت برای کل سفارش</option>
+              <option value="per_product">قیمت جداگانه برای هر محصول</option>
+              <option value="manual_quote">اعلام هزینه توسط ادمین و فاکتور جداگانه</option>
+            </select>
+            <p className="text-[11px] text-slate-400 mt-1">{formData.shippingPricingMode === 'per_product' ? 'هزینه ارسال هر محصول از تنظیمات همان محصول محاسبه می‌شود.' : formData.shippingPricingMode === 'manual_quote' ? 'مشتری هزینه کالا را پرداخت می‌کند و هزینه پیک بعداً با فاکتور جداگانه ارسال می‌شود.' : 'یک هزینه برای کل سفارش در نظر گرفته می‌شود.'}</p>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">

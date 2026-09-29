@@ -19,6 +19,7 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
   if (!isOpen || !product) return null;
 
   const [price, setPrice] = useState(product.price.toString());
+  const [shippingFee, setShippingFee] = useState((product.shippingFee || 0).toString());
   const [discountPercent, setDiscountPercent] = useState(
     (product.discountPercent || 0).toString()
   );
@@ -39,6 +40,7 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
     try {
       await onUpdateProduct(product.id, {
         price: priceNum,
+        shippingFee: Math.max(0, parseInt(shippingFee.replace(/[^0-9]/g, ''), 10) || 0),
         discountPercent: parseInt(discountPercent, 10) || 0,
       });
       onClose();
@@ -144,6 +146,13 @@ export const EditPriceModal: React.FC<EditPriceModalProps> = ({
             <p className="text-xs text-amber-400 mt-1 font-medium">
               معادل: {formatPrice(parsedPrice)}
             </p>
+          </div>
+
+          {/* Product delivery fee */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">هزینه ارسال این محصول (تومان)</label>
+            <input type="number" min="0" value={shippingFee} onChange={(e) => setShippingFee(e.target.value)} placeholder="۰ = رایگان" className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-mono" />
+            <p className="text-[11px] text-emerald-400 mt-1">۰ تومان یعنی ارسال رایگان</p>
           </div>
 
           {/* Discount input */}

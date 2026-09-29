@@ -386,6 +386,25 @@ function calculateCartSubtotal(ctx: TelegramContext): {
   return { subtotal, cartItems };
 }
 
+/** Calculates delivery according to the shop's selected pricing mode. */
+function calculateShippingFee(ctx: TelegramContext, cart: any[], subtotal: number): { fee: number; quotePending: boolean } {
+  const mode = ctx.botSettings.shippingPricingMode || 'fixed';
+  if (mode === 'manual_quote') return { fee: 0, quotePending: true };
+
+  const threshold = Number(ctx.botSettings.freeShippingThreshold || 0);
+  if (threshold > 0 && subtotal >= threshold) return { fee: 0, quotePending: false };
+  if (mode === 'per_product') {
+    return {
+      fee: cart.reduce((sum, item) => {
+        const product = ctx.products.find((candidate) => candidate.id === item.productId);
+        return sum + Math.max(0, Number(product?.shippingFee || 0)) * Number(item.quantity || 0);
+      }, 0),
+      quotePending: false,
+    };
+  }
+  return { fee: Math.max(0, Number(ctx.botSettings.shippingFee || 0)), quotePending: false };
+}
+
 /**
  * Final step before payment: offer to apply a coupon.
  *
@@ -491,10 +510,13 @@ export async function handleCheckoutCallback(ctx: TelegramContext, data: string)
         subtotal += effectivePrice * item.quantity;
       }
     });
-    const isFreeShip = subtotal >= ctx.botSettings.freeShippingThreshold;
-    draft.shippingFee = isFreeShip ? 0 : ctx.botSettings.shippingFee;
+    const shipping = calculateShippingFee(ctx, cart, subtotal);
+    draft.shippingFee = shipping.fee;
+    draft.shippingQuotePending = shipping.quotePending;
     ctx.userStates.set(ctx.chatId, state);
-    await tgSend(ctx, `🛵 دریافت با پیک انتخاب شد\n🚚 هزینه ارسال: <b>${draft.shippingFee === 0 ? 'رایگان' : draft.shippingFee.toLocaleString() + ' تومان'}</b>`);
+    await tgSend(ctx, shipping.quotePending
+      ? '🛵 دریافت با پیک انتخاب شد\n🚚 هزینه ارسال پس از بررسی توسط ادمین اعلام و به‌صورت فاکتور جداگانه برای شما ارسال می‌شود.'
+      : `🛵 دریافت با پیک انتخاب شد\n🚚 هزینه ارسال: <b>${draft.shippingFee === 0 ? 'رایگان' : draft.shippingFee.toLocaleString() + ' تومان'}</b>`);
     await continueAfterDelivery(ctx);
     return true;
   }
@@ -577,9 +599,11 @@ async function finishRegistration(ctx: TelegramContext) {
     };
   }).filter(Boolean);
 
-  const shippingFee = draft.deliveryMethod === 'delivery'
-    ? (subtotal >= ctx.botSettings.freeShippingThreshold ? 0 : (ctx.botSettings.shippingFee || 0))
-    : 0;
+  const shipping = draft.deliveryMethod === 'delivery'
+    ? calculateShippingFee(ctx, cart, subtotal)
+    : { fee: 0, quotePending: false };
+  const shippingFee = shipping.fee;
+  draft.shippingQuotePending = shipping.quotePending;
   // Re-validate the coupon against the final basket so an edited cart can never
   // carry a stale or now-ineligible discount into the created order.
   let discountAmount = 0;
@@ -610,7 +634,7 @@ async function finishRegistration(ctx: TelegramContext) {
     summary += `${idx + 1}. ${item!.productName} — ${item!.quantity} ${item!.unit} = <b>${item!.total.toLocaleString()}</b>\n`;
   });
   summary += `\n💵 مجموع اقلام: <b>${subtotal.toLocaleString()}</b>\n`;
-  summary += `🚚 هزینه ارسال: <b>${shippingFee === 0 ? 'رایگان' : shippingFee.toLocaleString()}</b>\n`;
+  summary += `🚚 هزینه ارسال: <b>${shipping.quotePending ? 'پس از بررسی ادمین اعلام می‌شود' : (shippingFee === 0 ? 'رایگان' : shippingFee.toLocaleString())}</b>\n`;
   if (discountAmount > 0) {
     summary += `🏷️ تخفیف (${draft.couponCode}): <b>-${discountAmount.toLocaleString()}</b>\n`;
   }
@@ -656,6 +680,7 @@ async function createOrder(ctx: TelegramContext) {
     items: draft.items,
     subtotal: draft.subtotal,
     shippingFee: draft.shippingFee,
+    shippingQuotePending: Boolean(draft.shippingQuotePending),
     discountAmount: draft.discountAmount || 0,
     couponCode: draft.couponCode || undefined,
     totalAmount: draft.totalAmount,

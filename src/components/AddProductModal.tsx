@@ -31,6 +31,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ProductCategory>('شیرینی تر و خامه‌ای');
   const [price, setPrice] = useState('');
+  const [shippingFee, setShippingFee] = useState('0');
   const [unit, setUnit] = useState('عدد');
   const [images, setImages] = useState<string[]>([]);
   const [uploadedImagesBase64, setUploadedImagesBase64] = useState<string[]>([]);
@@ -123,6 +124,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         name: name.trim(),
         category,
         price: priceNum,
+        shippingFee: Math.max(0, parseInt(shippingFee.replace(/[^0-9]/g, ''), 10) || 0),
         unit,
         image: finalImages[0] || finalImage,
         images: finalImages.length > 0 ? finalImages : [finalImage],
@@ -140,6 +142,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       setTimeout(() => {
         setName('');
         setPrice('');
+        setShippingFee('0');
         setDescription('');
         setUploadedImagesBase64([]);
         setImages([]);
@@ -274,6 +277,21 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 <option value="اسلایس">اسلایس</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              هزینه ارسال این محصول (تومان)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={shippingFee}
+              onChange={(e) => setShippingFee(e.target.value)}
+              placeholder="0 = رایگان"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+            />
+            <p className="text-[11px] text-emerald-400 mt-1">۰ تومان یعنی ارسال رایگان</p>
           </div>
 
           {/* Real File Upload Section */}

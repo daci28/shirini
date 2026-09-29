@@ -105,6 +105,7 @@ export const INITIAL_BOT_SETTINGS: BotSettings = {
   shabaNumber: '',
   shippingFee: 0,
   freeShippingThreshold: 0,
+  shippingPricingMode: 'fixed',
   unpaidOrderExpiryEnabled: false,
   unpaidOrderExpiryMinutes: 30,
   storeRulesEnabled: false,

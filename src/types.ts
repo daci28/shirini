@@ -6,12 +6,16 @@ export type ProductCategory =
   | 'کوکی و بیسکوئیت'
   | 'نان و کروسان';
 
+export type ShippingPricingMode = 'fixed' | 'per_product' | 'manual_quote';
+
 export interface Product {
   id: string;
   productCode?: string;
   name: string;
   category: ProductCategory;
   price: number; // in Tomans
+  /** Delivery fee for this product when shipping mode is per_product. */
+  shippingFee?: number;
   unit: string; // e.g., کیلوگرم, جعبه ۱۲ تایی, دیس نیم‌کیلویی, عدد
   image: string;
   images?: string[];
@@ -73,6 +77,8 @@ export interface Order {
   items: OrderItem[];
   subtotal: number;
   shippingFee: number;
+  /** True when the admin must quote delivery separately after the order. */
+  shippingQuotePending?: boolean;
   discountAmount: number;
   couponCode?: string;
   totalAmount: number;
@@ -144,6 +150,7 @@ export interface BotSettings {
   shabaNumber: string;
   shippingFee: number;
   freeShippingThreshold: number;
+  shippingPricingMode?: ShippingPricingMode;
   adminTelegramId: string;
   adminTelegramIds: string[];
   welcomeMessage: string;

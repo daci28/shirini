@@ -160,7 +160,7 @@ function storeNameOf(ctx: { botSettings?: any }): string {
   return String(ctx.botSettings?.storeName || '').trim() || 'فروشگاه';
 }
 
-function buildProductCard(prod: any, inCartQty: number) {
+function buildProductCard(prod: any, inCartQty: number, imageIndex = 0) {
   const hasDiscount = prod.discountPercent && prod.discountPercent > 0;
   const effectivePrice = hasDiscount
     ? Math.round(prod.price * (100 - prod.discountPercent) / 100)
@@ -215,6 +215,11 @@ function buildProductCard(prod: any, inCartQty: number) {
       { text: '🔙 دسته‌ها', callback_data: 'menu_categories', style: 'primary' },
     ]);
   }
+  if (Array.isArray(prod.images) && prod.images.length > 1) {
+    buttons.push([
+      { text: `🖼️ نمایش تصاویر بیشتر (${imageIndex + 1}/${prod.images.length})`, callback_data: `product_image_next_${prod.id}_${imageIndex}`, style: 'primary' },
+    ]);
+  }
   buttons.push([
     { text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' },
   ]);
@@ -226,7 +231,29 @@ async function tgSend(ctx: TelegramContext, text: string, buttons?: any[][], pho
   // In-place message edit attempt for interactive glass button navigation
   if (ctx.messageId) {
     if (photo) {
-      // Photo message in-place update (product card caption & buttons)
+      // Product cards can change both their photo and caption in place. Telegram
+      // supports this through editMessageMedia; trying it first prevents a
+      // gallery click from creating another message.
+      try {
+        const mediaResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageMedia`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: ctx.chatId,
+            message_id: ctx.messageId,
+            media: {
+              type: 'photo',
+              media: photo,
+              caption: text,
+              parse_mode: 'HTML',
+            },
+            reply_markup: buttons && buttons.length > 0 ? { inline_keyboard: buttons } : undefined,
+          }),
+        });
+        const mediaData = (await mediaResponse.json().catch(() => ({}))) as any;
+        if (mediaData?.ok) return;
+      } catch { /* fall through to caption-only compatibility path */ }
+
       try {
         const capResponse = await fetch(`https://api.telegram.org/bot${ctx.token}/editMessageCaption`, {
           method: 'POST',
@@ -448,28 +475,9 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
         .filter((img): img is string => Boolean(img));
       
       if (allImages.length > 0) {
-        if (allImages.length === 1) {
-          // Single image with caption and buttons
-          await tgSend(ctx, caption, buttons, allImages[0]);
-        } else {
-          // Telegram does not reliably support inline keyboards on media-group
-          // messages. Keep the product's main image, caption, and buttons in
-          // one sendPhoto message, then send the remaining photos as a clean
-          // album. This avoids the unwanted standalone text/button message and
-          // keeps the controls attached to the product description.
-          await tgSend(ctx, caption, buttons, allImages[0]);
-          const remainingMedia = allImages.slice(1, 10).map((img: string) => ({
-            type: 'photo',
-            media: img,
-          }));
-          if (remainingMedia.length > 0) {
-            await fetch(`https://api.telegram.org/bot${ctx.token}/sendMediaGroup`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chat_id: ctx.chatId, media: remainingMedia }),
-            });
-          }
-        }
+        // Send only the first image. The customer can cycle through the rest
+        // with the inline "نمایش تصاویر بیشتر" button in this same message.
+        await tgSend(ctx, caption, buttons, allImages[0]);
       } else {
         // No images - send text only
         await tgSend(ctx, caption, buttons);
@@ -478,7 +486,27 @@ export async function handleCustomerCallback(ctx: TelegramContext, data: string)
     return true;
   }
 
-  // In-place cart adjustment on product cards (inc_cart_, inc5_cart_, dec_cart_, add_to_cart_)
+  // Cycle through a product's gallery in the same Telegram message. The
+  // current photo, caption and inline keyboard are replaced in place.
+  const galleryMatch = data.match(/^product_image_next_(.+)_(\d+)$/);
+  if (galleryMatch) {
+    const prod = ctx.products.find((item) => item.id === galleryMatch[1]);
+    if (!prod) return true;
+    const images = Array.isArray(prod.images) && prod.images.length > 0
+      ? prod.images
+      : (prod.image ? [prod.image] : []);
+    if (images.length < 2) return true;
+    const currentIndex = Number(galleryMatch[2]) || 0;
+    const nextIndex = (currentIndex + 1) % images.length;
+    const cart = ctx.userCarts.get(ctx.chatId) || [];
+    const inCartQty = Number(cart.find((item: any) => item.productId === prod.id)?.quantity || 0);
+    const { caption, buttons } = buildProductCard(prod, inCartQty, nextIndex);
+    const nextImage = toTelegramImageUrl(images[nextIndex]);
+    if (nextImage) await tgSend(ctx, caption, buttons, nextImage);
+    return true;
+  }
+
+  // In-place cart adjustment on product cards (inc_cart_, inc5_cart_, dec_cart_)
   if (data.startsWith('add_to_cart_') || data.startsWith('inc_cart_') || data.startsWith('inc5_cart_') || data.startsWith('add_qty_')) {
     let prodId = '';
     let qtyToAdd = 1;

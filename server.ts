@@ -5835,25 +5835,43 @@ async function startServer() {
       upsertCustomerFromCustomOrder(order);
       saveAllData();
 
-      userStates.set(chatId, { mode: 'custom_order_payment_method', orderId: order.id });
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      userStates.set(chatId, { mode: 'custom_order_payment_method', orderId: order.id, sourceMessageId: registrationState.sourceMessageId });
+      const paymentText = tmsg('registrationCompleteMessage', {
+        finalPrice: order.finalPrice?.toLocaleString() || '---',
+        prepaymentAmount: order.prepaymentAmount?.toLocaleString() || '---',
+      });
+      const paymentKeyboard = [
+        [{ text: '💵 پرداخت در محل', callback_data: `custom_order_cash_${order.id}`, style: 'success' }],
+        [{ text: '💳 پرداخت هم اکنون', callback_data: `custom_order_online_${order.id}`, style: 'success' }],
+        [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
+      ];
+      if (registrationState.sourceMessageId) {
+        await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, message_id: registrationState.sourceMessageId, text: paymentText, parse_mode: 'HTML', reply_markup: { inline_keyboard: paymentKeyboard } }),
+        });
+      } else {
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: paymentText, parse_mode: 'HTML', reply_markup: { inline_keyboard: paymentKeyboard } }),
+        });
+      }
+      return true;
+    };
+
+    const editCallbackText = async (targetChatId: string, targetMessageId: number | undefined, text: string, keyboard?: any[][]): Promise<void> => {
+      await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chat_id: chatId,
-          text: tmsg('registrationCompleteMessage', {
-            finalPrice: order.finalPrice?.toLocaleString() || '---',
-            prepaymentAmount: order.prepaymentAmount?.toLocaleString() || '---',
-          }),
+          chat_id: targetChatId,
+          message_id: targetMessageId,
+          text,
           parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: [
-            [{ text: '💵 پرداخت در محل', callback_data: `custom_order_cash_${order.id}`, style: 'success' }],
-            [{ text: '💳 پرداخت هم اکنون', callback_data: `custom_order_online_${order.id}`, style: 'success' }],
-            [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
-          ] },
+          ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
         }),
-      });
-      return true;
+      }).catch((error) => console.error('[custom-order] callback message edit failed:', error));
     };
 
     // 1. Handle bot status in group (my_chat_member)
@@ -7507,6 +7525,13 @@ async function startServer() {
           });
           return;
         }
+        if (order.prepaymentStatus === 'approved' || order.isPrepaymentPaid || order.prepaymentStatus === 'pending_confirmation') {
+          await editCallbackText(chatId, messageId,
+            `✅ <b>این سفارش قبلاً ثبت شده است.</b>\n\n💳 وضعیت بیعانه: <b>${order.prepaymentStatus === 'approved' || order.isPrepaymentPaid ? 'تأیید شده' : 'در انتظار بررسی ادمین'}</b>\n🚫 امکان پرداخت دوباره برای این سفارش وجود ندارد.`,
+            [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]],
+          );
+          return;
+        }
         const telegramProfile = getTelegramProfile(cb.from);
         const knownCustomer = findBotCustomer(customers, String(cb.from.id));
         const knownName = knownCustomer && isRealName(knownCustomer.name) ? knownCustomer.name! : '';
@@ -7517,6 +7542,7 @@ async function startServer() {
           userStates.set(chatId, {
             mode: 'custom_order_register_address',
             orderId: orderId,
+            sourceMessageId: messageId,
             customerName: knownName,
             customerPhone: knownPhone,
             addresses: knownAddresses,
@@ -7531,20 +7557,15 @@ async function startServer() {
             }])),
             [{ text: '➕ ثبت آدرس جدید', callback_data: 'custom_order_addr_new', style: 'primary' }]
           ];
-          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text: `👤 <b>${knownName}</b> عزیز، اطلاعات تماس شما از قبل ثبت شده است.\n\n🏠 یک آدرس از قبل ثبت‌شده را انتخاب کنید یا آدرس جدید وارد کنید:`,
-              parse_mode: 'HTML',
-              reply_markup: { inline_keyboard: addressButtons }
-            })
-          });
+          await editCallbackText(chatId, messageId,
+            `👤 <b>${knownName}</b> عزیز، اطلاعات تماس شما از قبل ثبت شده است.\n\n🏠 یک آدرس از قبل ثبت‌شده را انتخاب کنید یا آدرس جدید وارد کنید:`,
+            addressButtons,
+          );
         } else {
           userStates.set(chatId, {
             mode: 'custom_order_register_name',
             orderId: orderId,
+            sourceMessageId: messageId,
             customerUsername: telegramProfile.username || order.customerUsername,
             customerTelegramName: telegramProfile.displayName || order.customerTelegramName,
           });
@@ -7561,6 +7582,13 @@ async function startServer() {
       } else if (data.startsWith('custom_order_cash_')) {
         const orderId = data.replace('custom_order_cash_', '');
         const order = customOrders.find(o => o.id === orderId);
+        if (order && (order.prepaymentStatus === 'approved' || order.isPrepaymentPaid || order.prepaymentStatus === 'pending_confirmation')) {
+          await editCallbackText(chatId, messageId,
+            `✅ <b>این سفارش قبلاً ثبت شده است.</b>\n\n🚫 بیعانهٔ این سفارش قبلاً پرداخت یا برای بررسی ارسال شده و امکان پرداخت دوباره ندارد.`,
+            [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]],
+          );
+          return;
+        }
         if (!order || String(order.customerTelegramId) !== chatId) {
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
@@ -7591,11 +7619,12 @@ async function startServer() {
         order.updatedAt = new Date().toISOString();
         saveAllData();
         userStates.delete(chatId);
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
+            message_id: messageId,
             text: tmsg('cashOnDeliverySelectedMessage', {
               finalPrice: order.finalPrice?.toLocaleString() || '---',
             }),
@@ -7609,6 +7638,13 @@ async function startServer() {
       } else if (data.startsWith('custom_order_online_')) {
         const orderId = data.replace('custom_order_online_', '');
         const order = customOrders.find(o => o.id === orderId);
+        if (order && (order.prepaymentStatus === 'approved' || order.isPrepaymentPaid || order.prepaymentStatus === 'pending_confirmation')) {
+          await editCallbackText(chatId, messageId,
+            `✅ <b>این سفارش قبلاً ثبت شده است.</b>\n\n🚫 بیعانهٔ این سفارش قبلاً پرداخت یا برای بررسی ارسال شده و امکان پرداخت دوباره ندارد.`,
+            [[{ text: '📦 پیگیری سفارشات', callback_data: 'track_order', style: 'primary' }], [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main', style: 'danger' }]],
+          );
+          return;
+        }
         if (!order || String(order.customerTelegramId) !== chatId) {
           await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
             method: 'POST',
@@ -7628,12 +7664,13 @@ async function startServer() {
           });
           return;
         }
-        userStates.set(chatId, { mode: 'custom_order_receipt', orderId: orderId });
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        userStates.set(chatId, { mode: 'custom_order_receipt', orderId: orderId, sourceMessageId: messageId });
+        await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
+            message_id: messageId,
             text: tmsg('customOrderPaymentPromptMessage', {
               prepaymentAmount: order.prepaymentAmount?.toLocaleString() || '---',
               cardNumber: botSettings.cardNumber,

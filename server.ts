@@ -5835,7 +5835,6 @@ async function startServer() {
       upsertCustomerFromCustomOrder(order);
       saveAllData();
 
-      userStates.set(chatId, { mode: 'custom_order_payment_method', orderId: order.id, sourceMessageId: registrationState.sourceMessageId });
       const paymentText = tmsg('registrationCompleteMessage', {
         finalPrice: order.finalPrice?.toLocaleString() || '---',
         prepaymentAmount: order.prepaymentAmount?.toLocaleString() || '---',
@@ -5845,18 +5844,34 @@ async function startServer() {
         [{ text: '💳 پرداخت هم اکنون', callback_data: `custom_order_online_${order.id}`, style: 'success' }],
         [{ text: '❌ انصراف', callback_data: 'back_to_main', style: 'danger' }],
       ];
-      if (registrationState.sourceMessageId) {
+
+      // When this is a customer's first registration, the original quoted-order
+      // message is kept intact. Start the payment flow in one new message, then
+      // keep editing that payment message for all following callback steps.
+      let paymentMessageId = registrationState.sourceMessageId;
+      if (registrationState.startPaymentInNewMessage) {
+        const paymentResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: paymentText, parse_mode: 'HTML', reply_markup: { inline_keyboard: paymentKeyboard } }),
+        });
+        const paymentResult = await paymentResponse.json().catch(() => null);
+        paymentMessageId = paymentResult?.result?.message_id;
+      } else if (paymentMessageId) {
         await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, message_id: registrationState.sourceMessageId, text: paymentText, parse_mode: 'HTML', reply_markup: { inline_keyboard: paymentKeyboard } }),
+          body: JSON.stringify({ chat_id: chatId, message_id: paymentMessageId, text: paymentText, parse_mode: 'HTML', reply_markup: { inline_keyboard: paymentKeyboard } }),
         });
       } else {
-        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        const paymentResponse = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chat_id: chatId, text: paymentText, parse_mode: 'HTML', reply_markup: { inline_keyboard: paymentKeyboard } }),
         });
+        const paymentResult = await paymentResponse.json().catch(() => null);
+        paymentMessageId = paymentResult?.result?.message_id;
       }
+      userStates.set(chatId, { mode: 'custom_order_payment_method', orderId: order.id, sourceMessageId: paymentMessageId });
       return true;
     };
 
@@ -7566,6 +7581,9 @@ async function startServer() {
             mode: 'custom_order_register_name',
             orderId: orderId,
             sourceMessageId: messageId,
+            // No customer profile exists yet: after address collection, start
+            // payment in a separate message instead of editing the quote.
+            startPaymentInNewMessage: true,
             customerUsername: telegramProfile.username || order.customerUsername,
             customerTelegramName: telegramProfile.displayName || order.customerTelegramName,
           });
